@@ -1,0 +1,19 @@
+version: "3.7"
+
+services:
+  app:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    networks:
+      - report_calculation_report_bridge
+      # - ipv4_address: 169.254.6.4
+    env_file:
+      - .env
+    volumes:
+      - ./:/app/
+      - /app/trade_pro.egg-info/
+
+networks:
+  report_calculation_report_bridge:
+    external: true
