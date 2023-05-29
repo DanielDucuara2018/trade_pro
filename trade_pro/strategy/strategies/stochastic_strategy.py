@@ -26,13 +26,15 @@ class StochasticStrategy(Base):
     ema_timeperiod: int = 200
 
     def indicators(self, klines: dict[str, Any]) -> tuple[NDArray]:
-        """_summary_
+        """calculates the indicators used in buying and selling
 
         Args:
-            klines (_type_): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
-            tuple[Any]: _description_
+            tuple[Any]: set of indicators
         """
         close_prices = self.close_prices(klines)
         high_prices = self.high_prices(klines)
@@ -48,11 +50,13 @@ class StochasticStrategy(Base):
         and rsi indicator crosses above 50 level
 
         Args:
-            klines (Any): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: entry_condition
+            bool: entry or not to the market
         """
 
         close_prices, ema, rsi_values, slowk, slowd = self.indicators(klines)
@@ -71,11 +75,13 @@ class StochasticStrategy(Base):
         and rsi indicator crosses below 50 level
 
         Args:
-            klines (_type_): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: exit_condition
+            bool: exit or not from the market
         """
 
         (

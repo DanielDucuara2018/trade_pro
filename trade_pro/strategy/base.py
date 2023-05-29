@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Base:
+    """_summary_
+
+    Raises:
+        Exception: _description_
+
+    Returns:
+        _type_: _description_
+    """
 
     init_balance: float
     percentage_to_invest: int
@@ -36,11 +44,13 @@ class Base:
     def __post_init__(self):
         self.available_balance: int = self.init_balance
 
-    def high_prices(self, klines: dict[str, Any]) -> NDArray:
-        """_summary_
+    def open_prices(self, klines: dict[str, Any]) -> NDArray:
+        """Get open prices from market data candlesticks
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
             NDArray: _description_
@@ -48,10 +58,12 @@ class Base:
         return np.array([float(kline[1]) for kline in klines])
 
     def high_prices(self, klines: dict[str, Any]) -> NDArray:
-        """_summary_
+        """Get opening prices from market data candlesticks
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
             NDArray: _description_
@@ -59,10 +71,12 @@ class Base:
         return np.array([float(kline[2]) for kline in klines])
 
     def low_prices(self, klines: dict[str, Any]) -> NDArray:
-        """_summary_
+        """Get low prices from market data candlesticks
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
             NDArray: _description_
@@ -70,10 +84,12 @@ class Base:
         return np.array([float(kline[3]) for kline in klines])
 
     def close_prices(self, klines: dict[str, Any]) -> NDArray:
-        """_summary_
+        """Get closing prices from market data candlesticks
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
             NDArray: _description_
@@ -81,10 +97,12 @@ class Base:
         return np.array([float(kline[4]) for kline in klines])
 
     def close_times(self, klines: dict[str, Any]) -> NDArray:
-        """_summary_
+        """Get closing timestamp from market data candlesticks
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
             NDArray: _description_
@@ -111,41 +129,67 @@ class Base:
 
     @abstractmethod
     def indicators(self, klines: dict[str, Any]) -> tuple[Any]:
-        """_summary_
+        """calculates the indicators used in buying and selling
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
-            tuple[Any]: _description_
+            tuple[Any]: set of indicators
         """
         pass
 
     @abstractmethod
     def entry_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
-        """_summary_
+        """Buy or not depending on the entry condition of the indicators
 
         Args:
-            klines (dict[str, Any]): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: _description_
+            bool: entry or not to the market
         """
         pass
 
     @abstractmethod
     def exit_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
+        """Sell or not depending on the entry condition of the indicators
+
+        Args:
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
+
+        Returns:
+            bool: exit or not from the market
+        """
+        pass
+
+    def stop_loss_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
         """_summary_
 
         Args:
-            klines (dict[str, Any]): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: _description_
+            bool: exit or not from the market
         """
-        pass
+        low_prices = self.low_prices(klines)
+        high_prices = self.high_prices(klines)
+        price_in_stop_loss = self.buy_prices[-1] * (1 - (self.stop_loss / 100))
+        if condition := low_prices[index] < price_in_stop_loss < high_prices[index]:
+            self.bougth_in_stop_loss = True
+            self.price_in_stop_loss = price_in_stop_loss
+        return condition
 
     def generate_chart(self, close_prices: NDArray, close_times: NDArray) -> None:
         """_summary_
@@ -172,32 +216,17 @@ class Base:
         ax.plot(close_times, self.get_sell_prices(), "r.")
         plt.savefig(file_name)
 
-    def stop_loss_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
-        """_summary_
-
-        Args:
-            klines (dict[str, Any]): _description_
-            index (int, optional): _description_. Defaults to -1.
-
-        Returns:
-            bool: _description_
-        """
-        low_prices = self.low_prices(klines)
-        high_prices = self.high_prices(klines)
-        price_in_stop_loss = self.buy_prices[-1] * (1 - (self.stop_loss / 100))
-        if condition := low_prices[index] < price_in_stop_loss < high_prices[index]:
-            self.bougth_in_stop_loss = True
-            self.price_in_stop_loss = price_in_stop_loss
-        return condition
-
     def buy_position(self, last_price: float) -> tuple[float]:
         """_summary_
 
         Args:
-            last_price (float): _description_
+            last_price (float): current price or close price
 
         Returns:
-            tuple[float]: _description_
+            tuple[float]: The first value is the money to be invested
+            calculated from the percentage to be invested and the available
+            balance. The second value is the amount of tokens purchased
+            from the crypto pair with the money to be invested.
         """
         logger.info("buying at %s", last_price)
         money_to_investment = self.available_balance * (self.percentage_to_invest / 100)
@@ -218,7 +247,7 @@ class Base:
         """_summary_
 
         Args:
-            last_price (float): _description_
+            last_price (float): current price or close price
             investment (float): _description_
             currency_amount (float): _description_
         """

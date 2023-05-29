@@ -13,18 +13,28 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RsiStrategy(Base):
+    """_summary_
+
+    Args:
+        Base (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
 
     rsi_timeperiod: int = 2
     ema_timeperiod: int = 200
 
     def indicators(self, klines: dict[str, Any]) -> tuple[NDArray]:
-        """_summary_
+        """calculates the indicators used in buying and selling
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
-            tuple[Any]: _description_
+            tuple[Any]: set of indicators
         """
         close_prices = self.close_prices(klines)
         rsi_values = ta.RSI(close_prices, timeperiod=self.rsi_timeperiod)
@@ -32,14 +42,17 @@ class RsiStrategy(Base):
         return close_prices, rsi_values, ema
 
     def entry_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
-        """_summary_
+        """Buy when price is above the ema and the rsi indicator crosses upwards
+        the oversold line of 10
 
         Args:
-            klines (dict[str, Any]): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: _description_
+            bool: entry or not to the market
         """
 
         close_prices, rsi_values, ema = self.indicators(klines)
@@ -51,21 +64,24 @@ class RsiStrategy(Base):
         )
 
     def exit_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
-        """_summary_
+        """sells when price is above the ema and the rsi indicator crosses down
+        the overbought line of 90
 
         Args:
-            klines (dict[str, Any]): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: _description_
+            bool: exit or not to the market
         """
 
         close_prices, rsi_values, ema = self.indicators(klines)
 
         return self.position_held and (
-            # self.stop_loss_condition(klines, index=index)
-            (
+            self.stop_loss_condition(klines, index=index)
+            or (
                 close_prices[index] > ema[index]
                 and rsi_values[index] < 90 < rsi_values[index - 1]
             )
@@ -81,4 +97,5 @@ init = RsiStrategy(
     start_time_back_testing="3 years ago UTC",
     start_time_strategy="9 days ago UTC",
     kline_interval=AsyncClient.KLINE_INTERVAL_1HOUR,
+    # kline_interval=AsyncClient.KLINE_INTERVAL_1MINUTE,
 )

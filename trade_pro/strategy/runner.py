@@ -19,6 +19,7 @@ def run(mode: str, strategy_name: str):
 def strategy(strategy):
     logger.info("Running strategy proccess %s", strategy)
     module = get_module(strategy)
+    logger.info("Found module strategy %s", module)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(module.init.run())
 
@@ -28,5 +29,6 @@ def strategy(strategy):
 def back_testing(strategy):
     logger.info("Running back_testing proccess strategy %s", strategy)
     module = get_module(strategy)
+    logger.info("Found module strategy %s", module)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(module.init.back_testing())

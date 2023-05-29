@@ -12,19 +12,29 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class RsiStrategy(Base):
+class MacdStrategy(Base):
+    """_summary_
+
+    Args:
+        Base (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
 
     rsi_timeperiod: int = 14
     ema_timeperiod: int = 200
 
     def indicators(self, klines: dict[str, Any]) -> tuple[NDArray]:
-        """_summary_
+        """calculates the indicators used in buying and selling
 
         Args:
-            klines (dict[str, Any]): _description_
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
 
         Returns:
-            tuple[Any]: _description_
+            tuple[Any]: set of indicators
         """
         close_prices = self.close_prices(klines)
         rsi_values = ta.RSI(close_prices, timeperiod=self.rsi_timeperiod)
@@ -33,14 +43,18 @@ class RsiStrategy(Base):
         return close_prices, rsi_values, macd, macd_signal, ema
 
     def entry_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
-        """_summary_
+        """Buy when rsi indicator crossover the 30 level and macd indicator crossover
+        the signal macdBuy when the rsi indicator crosses the 30 level upwards and the
+        macd indicator crosses the macd signal upwards.
 
         Args:
-            klines (dict[str, Any]): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: _description_
+            bool: entry or not to the market
         """
 
         close_prices, rsi_values, macd, macd_signal, ema = self.indicators(klines)
@@ -53,14 +67,17 @@ class RsiStrategy(Base):
         )
 
     def exit_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
-        """_summary_
+        """Buy when the rsi indicator crosses downwards the 70 level and the macd
+        indicator crosses downwards the macd signal.
 
         Args:
-            klines (dict[str, Any]): _description_
-            index (int, optional): _description_. Defaults to -1.
+            klines (dict[str, Any]): contains the candlesticks information:
+            opening price, closing price, high price, low price, opening and
+            closing timestamp, volume, etc...
+            index (int, optional): position in the numpy data array. Defaults to -1.
 
         Returns:
-            bool: _description_
+            bool: exit or not from the market
         """
 
         close_prices, rsi_values, macd, macd_signal, ema = self.indicators(klines)
@@ -75,7 +92,7 @@ class RsiStrategy(Base):
         )
 
 
-init = RsiStrategy(
+init = MacdStrategy(
     init_balance=2000,
     percentage_to_invest=100,
     stop_loss=5,
