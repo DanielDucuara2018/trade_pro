@@ -3,18 +3,19 @@ from setuptools import find_packages, setup
 VERSION = "0.1"
 
 INSTALL_REQUIRES = [
-    "python-binance==1.0.16",
-    "apischema==0.15.6",
-    "python-telegram-bot==20.0a2",
-    "SQLAlchemy==1.4.37",
-    "psycopg2==2.9.1",
-    "configparser==5.3.0",
-    "fastapi[all]==0.92.0",
+    "aio-pika==9.1.2",
+    "apischema==0.18.0",
     "asyncio==3.4.3",
-    "numpy==1.24.2",
+    "fastapi[all]==0.92.0",
     "matplotlib==3.7.1",
+    "numpy==1.24.2",
+    "orjson==3.9.1",
+    "psycopg2==2.9.1",
+    "python-binance==1.0.16",
+    "python-telegram-bot==20.0a2",
+    "PyYAML==6.0",
+    "SQLAlchemy==1.4.37",
     "TA-Lib==0.4.26",
-    "technical==1.4.0",
 ]
 
 setup(

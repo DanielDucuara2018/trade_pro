@@ -92,7 +92,7 @@ class RsiStrategy(Base):
 init = RsiStrategy(
     init_balance=2000,
     percentage_to_invest=100,
-    stop_loss=5,
+    stop_loss=10,
     symbol="BTCUSDT",
     start_time_back_testing="3 years ago UTC",
     start_time_strategy="9 days ago UTC",

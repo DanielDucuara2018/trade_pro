@@ -1,8 +1,10 @@
+import asyncio
 import logging
 
 import click
 
-from trade_pro.strategy.runner import run
+from trade_pro.rabbitmq.runner import run as rmq_runner
+from trade_pro.strategy.runner import run as strategy_runner
 
 logger = logging.getLogger(__name__)
 
@@ -13,23 +15,29 @@ def console():
 
 
 @console.command()
-@click.option("--strategy", required=True, type=str)
-def strategy(strategy):
-    logger.info(f"Running strategy {strategy}")
-    run("strategy", strategy)
+@click.option("--name", required=True, type=str)
+def strategy(name):
+    logger.info(f"Running strategy {name} on background")
+    strategy_runner("strategy", name)
 
 
 @console.command()
-@click.option("--strategy", required=True, type=str)
-def back_testing(strategy):
-    logger.info(f"Running back testing for strategy {strategy}")
-    run("back-testing", strategy)
+@click.option("--name", required=True, type=str)
+def back_testing(name):
+    logger.info(f"Running back testing for strategy {name} on background")
+    strategy_runner("back-testing", name)
+
+
+@console.command()
+@click.option("--name", required=True, type=str)
+def signals(name):
+    logger.info(f"Running signals for strategy {name} on background")
+    strategy_runner("signals", name)
 
 
 def main():
     logger.info("Running main process")
-    while True:
-        pass
+    asyncio.run(rmq_runner("trade_pro"))
 
 
 if __name__ == "__main__":

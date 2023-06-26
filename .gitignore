@@ -174,3 +174,6 @@ pip-selfcheck.json
 
 # telegram bot files
 arbitrarycallbackdatabot
+
+### rabbitmq folter ###
+rmq/

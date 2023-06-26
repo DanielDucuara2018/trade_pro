@@ -4,8 +4,8 @@ Launch trading bot strategies and back testing
 
 ## Requirements
 
-- Python 3.9
-- Docker + Compose
+- Python +3.9
+- Docker Compose
 
 ## pre-commit
 
@@ -40,11 +40,11 @@ docker-compose up -d --build
 Create a host name for trade-pro application:
 
 ```bash
-169.254.6.4 trade-pro
+169.254.6.5 trade-pro
 ```
 
 Forward port in host machine:
 
 ```bash
-ssh -L 127.0.0.1:3201:trade-pro:3202 username@ip_address
+ssh -L 127.0.0.1:3202:trade-pro:3202 username@ip_address
 ```

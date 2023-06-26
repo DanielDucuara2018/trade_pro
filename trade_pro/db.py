@@ -1,62 +1,41 @@
-import configparser
 import logging
 import os
-from dataclasses import dataclass
 from typing import Optional
 
-from apischema import deserialize
 from sqlalchemy.engine import create_engine
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic.command import upgrade
-from alembic.config import Config
+from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from trade_pro.config import Config
 from trade_pro.model.base import mapper_registry
 
 logger = logging.getLogger(__name__)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ALEMBIC_PATH = os.path.join(ROOT, "alembic")
+ALEMBIC_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "alembic"
+)
 
 
-@dataclass
-class Database:
-    database: str
-    host: str
-    password: str
-    port: str
-    user: str
-    ref_table: str
-
-
-def load_database_info(path: str = os.path.join(ROOT, "trade_pro.ini")) -> Database:
-    logger.info("loading postgres configuration from file %s", path)
-    Config = configparser.ConfigParser()
-    Config.read(path)
-    return deserialize(Database, Config._sections["database"])
-
-
-def get_engine(db: Database, suffix: Optional[str] = None) -> Engine:
-    sqlalchemy_url = (
-        f"postgresql://{db.user}:{db.password}@{db.host}:{db.port}/{db.database}"
-    )
+def get_engine(suffix: Optional[str] = None) -> Engine:
+    sqlalchemy_url = f"postgresql://{Config.database.user}:{Config.database.password}@{Config.database.host}:{Config.database.port}/{Config.database.database}"
     if suffix:
         sqlalchemy_url += suffix
     return create_engine(sqlalchemy_url)
 
 
-def check_db_connection(db: Database) -> None:
-    conn = get_engine(db).connect()
+def check_db_connection() -> None:
+    conn = get_engine().connect()
     conn.close()
 
 
 def init() -> sessionmaker:
     logger.info("Initialising postgres connection")
-    db = load_database_info()
-    engine = get_engine(db)
+    engine = get_engine()
     return sessionmaker(bind=engine)
 
 
@@ -67,7 +46,7 @@ def open_session(
 
 
 def get_alembic_config(conn):
-    config = Config()
+    config = AlembicConfig()
     # pylint: disable=unsupported-assignment-operation
     config.attributes["connection"] = conn
     config.set_section_option("alembic", "script_location", ALEMBIC_PATH)
@@ -114,13 +93,14 @@ def update(conn, table_name, dry_run=False):
 
 
 def initialize(update_schema: bool = False) -> None:
-    db = load_database_info()
     logger.info("Checking database connection")
-    check_db_connection(db)
+    check_db_connection()
     logger.info("Checking alembic migrations")
-    engine = get_engine(db, suffix="?target_session_attrs=read-write")
+    engine = get_engine(suffix="?target_session_attrs=read-write")
     with engine.connect() as conn:
-        applied_revisions = update(conn, db.ref_table, dry_run=not update_schema)
+        applied_revisions = update(
+            conn, Config.database.ref_table, dry_run=not update_schema
+        )
 
     if applied_revisions and update_schema:
         raise RuntimeError("Database is not up-to-date")

@@ -98,6 +98,7 @@ init = EmaStrategy(
     symbol="BTCUSDT",
     start_time_back_testing="3 years ago UTC",
     start_time_strategy="9 days ago UTC",
-    kline_interval=AsyncClient.KLINE_INTERVAL_1HOUR,
-    # kline_interval=AsyncClient.KLINE_INTERVAL_1MINUTE,
+    # kline_interval=AsyncClient.KLINE_INTERVAL_1HOUR,
+    # kline_interval=AsyncClient.KLINE_INTERVAL_30MINUTEs,
+    kline_interval=AsyncClient.KLINE_INTERVAL_1MINUTE,
 )

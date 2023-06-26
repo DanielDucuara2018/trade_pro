@@ -10,6 +10,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from trade_pro.config import create_binance_client
+from trade_pro.rabbitmq.requester import run as send_rmq_msg
+from trade_pro.rabbitmq.utils import Call
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +325,8 @@ class Base:
                 "Buys: %s. Sells: %s.", len(self.buy_prices), len(self.sell_prices)
             )
 
+            call: Call = Call(method="save", params={"buy": 0})
+            await send_rmq_msg("strategy", "trade", call)
             await asyncio.sleep(5)
 
     async def back_testing(self) -> None:

@@ -63,7 +63,7 @@ class StochasticStrategy(Base):
 
         return (
             not self.position_held
-            and close_prices[index] > ema[index]
+            # and close_prices[index] > ema[index]
             and slowk[index] < 20
             and slowd[index] < 20
             and slowk[index - 1] < slowd[index] < slowk[index]
@@ -95,8 +95,8 @@ class StochasticStrategy(Base):
         return self.position_held and (
             # self.stop_loss_condition(klines, index=index)
             (
-                close_prices[index] > ema[index]
-                and slowk[index] > 80
+                # close_prices[index] > ema[index]
+                slowk[index] > 80
                 and slowd[index] > 80
                 and slowk[index] < slowd[index] < slowk[index - 1]
                 and rsi_values[index] < 50 < rsi_values[index - 1]

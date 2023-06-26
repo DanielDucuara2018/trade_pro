@@ -3,7 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from trade_pro.telegram.telegram import telegram_app
+from trade_pro.telegram.initialize import telegram_app
 
 logger = logging.getLogger(__name__)
 

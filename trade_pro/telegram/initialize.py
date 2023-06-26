@@ -2,7 +2,7 @@ import logging
 
 from telegram.ext import Application, PicklePersistence
 
-from trade_pro.config import telegram_bot_token
+from trade_pro.config import TELEGRAM_BOT_TOKEN
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ def init_telegram_bot_application() -> Application:
     # Create the Application and pass it your bot's token.
     return (
         Application.builder()
-        .token(telegram_bot_token)
+        .token(TELEGRAM_BOT_TOKEN)
         .persistence(PicklePersistence(filepath="arbitrarycallbackdatabot"))
         .arbitrary_callback_data(True)
         .build()
