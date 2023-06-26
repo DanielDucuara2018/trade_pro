@@ -1,29 +1,44 @@
 version: "3.7"
 
+networks:
+  trade_pro:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 169.254.7.0/24
+
 services:
   app:
     build:
       context: ./
       dockerfile: ./Dockerfile
     networks:
-      - report_calculation_report_bridge
+      trade_pro:
+        ipv4_address: 169.254.7.2
     env_file:
       - .env
     volumes:
       - ./:/app/
       - /app/trade_pro.egg-info/
 
+  postgres:
+    image: postgres:10-alpine
+    networks:
+      trade_pro:
+        ipv4_address: 169.254.7.3
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./pgsql/init.d:/docker-entrypoint-initdb.d
+
   rabbitmq:
     image: rabbitmq:3.8.5-management-alpine
     networks:
-      - report_calculation_report_bridge
+      trade_pro:
+        ipv4_address: 169.254.7.4
     ports:
         - 5672:5672
         - 15672:15672
     volumes:
       - ./rmq/data/:/var/lib/rabbitmq/
       - ./rmq/log/:/var/log/rabbitmq
-
-networks:
-  report_calculation_report_bridge:
-    external: true
