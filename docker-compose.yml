@@ -1,7 +1,7 @@
 version: "3.7"
 
 networks:
-  trade_pro:
+  trade_pro_bridge:
     driver: bridge
     ipam:
       config:

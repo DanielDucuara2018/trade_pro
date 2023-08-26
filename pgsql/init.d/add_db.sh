@@ -19,5 +19,5 @@ do
         GRANT ALL PRIVILEGES ON DATABASE ${databases["$user"]}_test TO ${user}_test;
 EOSQL
 
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname """${databases["$user"]}""" < /docker-entrypoint-initdb.d/"""${databases["$user"]}""".sql
+    # psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname """${databases["$user"]}""" < /docker-entrypoint-initdb.d/"""${databases["$user"]}""".sql
 done

@@ -40,7 +40,8 @@ docker-compose up -d --build
 Create a host name for trade-pro application:
 
 ```bash
-169.254.6.5 trade-pro
+sudo nano /etc/hosts
+169.254.7.2 trade-pro
 ```
 
 Forward port in host machine:
