@@ -8,15 +8,12 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
+import pandas as pd
 
-from trade_pro.config import create_binance_client
-from trade_pro.rabbitmq.requester import run as send_rmq_msg
-from trade_pro.rabbitmq.utils import Call
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class Base:
     """_summary_
 
@@ -27,110 +24,38 @@ class Base:
         _type_: _description_
     """
 
-    init_balance: float
-    percentage_to_invest: int
-    stop_loss: int
-    symbol: str
-    start_time_back_testing: str
-    start_time_strategy: str
-    kline_interval: str
+    def __init__(
+        self,
+        symbol: str,
+        initial_balance: float,
+        position: bool = True,
+        commission: float = 0.0004,
+        slippage: float = 0.0005,
+        # percentage_to_invest: int,
+        # stop_loss: int,
+        # start_time_back_testing: str,
+        # start_time_strategy: str,
+        # kline_interval: str,
+        # wins: int = 0,
+        # losses: int = 0,
+        # buy_prices: list[float] = field(default_factory=list),
+        # sell_prices: list[float] = field(default_factory=list),
+        # bougth_in_stop_loss: bool = False,
+        # price_in_stop_loss: int = 0,
+    ):
+        self.symbol = symbol
+        self.initial_balance = initial_balance
+        self.position = position
+        self.commission = commission
+        self.slippage = slippage
 
-    wins: int = 0
-    losses: int = 0
-    position_held: bool = False
-    buy_prices: list[float] = field(default_factory=list)
-    sell_prices: list[float] = field(default_factory=list)
-    bougth_in_stop_loss: bool = False
-    price_in_stop_loss: int = 0
-
-    def __post_init__(self):
-        self.available_balance: int = self.init_balance
-
-    def open_prices(self, klines: dict[str, Any]) -> NDArray:
-        """Get open prices from market data candlesticks
-
-        Args:
-            klines (dict[str, Any]): contains the candlesticks information:
-            opening price, closing price, high price, low price, opening and
-            closing timestamp, volume, etc...
-
-        Returns:
-            NDArray: _description_
-        """
-        return np.array([float(kline[1]) for kline in klines])
-
-    def high_prices(self, klines: dict[str, Any]) -> NDArray:
-        """Get opening prices from market data candlesticks
-
-        Args:
-            klines (dict[str, Any]): contains the candlesticks information:
-            opening price, closing price, high price, low price, opening and
-            closing timestamp, volume, etc...
-
-        Returns:
-            NDArray: _description_
-        """
-        return np.array([float(kline[2]) for kline in klines])
-
-    def low_prices(self, klines: dict[str, Any]) -> NDArray:
-        """Get low prices from market data candlesticks
-
-        Args:
-            klines (dict[str, Any]): contains the candlesticks information:
-            opening price, closing price, high price, low price, opening and
-            closing timestamp, volume, etc...
-
-        Returns:
-            NDArray: _description_
-        """
-        return np.array([float(kline[3]) for kline in klines])
-
-    def close_prices(self, klines: dict[str, Any]) -> NDArray:
-        """Get closing prices from market data candlesticks
-
-        Args:
-            klines (dict[str, Any]): contains the candlesticks information:
-            opening price, closing price, high price, low price, opening and
-            closing timestamp, volume, etc...
-
-        Returns:
-            NDArray: _description_
-        """
-        return np.array([float(kline[4]) for kline in klines])
-
-    def close_times(self, klines: dict[str, Any]) -> NDArray:
-        """Get closing timestamp from market data candlesticks
-
-        Args:
-            klines (dict[str, Any]): contains the candlesticks information:
-            opening price, closing price, high price, low price, opening and
-            closing timestamp, volume, etc...
-
-        Returns:
-            NDArray: _description_
-        """
-        return np.array(
-            [datetime.fromtimestamp(float(kline[6] / 1000)) for kline in klines]
-        )
-
-    def get_buy_prices(self) -> NDArray:
-        """_summary_
-
-        Returns:
-            NDArray: _description_
-        """
-        return np.array(self.buy_prices)
-
-    def get_sell_prices(self) -> NDArray:
-        """_summary_
-
-        Returns:
-            NDArray: _description_
-        """
-        return np.array(self.sell_prices)
+        self.balance = self.initial_balance
+        self.peak_balance = self.initial_balance
+        self.max_drawdown = 0
+        self.trades = []
 
     @abstractmethod
-    def indicators(self, klines: dict[str, Any]) -> tuple[Any]:
+    def indicators(self, df: pd.DataFrame, *, df_high: pd.DataFrame | None = None) -> pd.DataFrame:
         """calculates the indicators used in buying and selling
 
         Args:
@@ -144,7 +69,7 @@ class Base:
         pass
 
     @abstractmethod
-    def entry_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
+    def entry_condition(self, df: pd.DataFrame, *, index: int = -1) -> bool:
         """Buy or not depending on the entry condition of the indicators
 
         Args:
@@ -159,7 +84,7 @@ class Base:
         pass
 
     @abstractmethod
-    def exit_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
+    def exit_condition(self, df: pd.DataFrame, *, index: int = -1) -> bool:
         """Sell or not depending on the entry condition of the indicators
 
         Args:
@@ -173,192 +98,267 @@ class Base:
         """
         pass
 
-    def stop_loss_condition(self, klines: dict[str, Any], *, index: int = -1) -> bool:
-        """_summary_
-
-        Args:
-            klines (dict[str, Any]): contains the candlesticks information:
-            opening price, closing price, high price, low price, opening and
-            closing timestamp, volume, etc...
-            index (int, optional): position in the numpy data array. Defaults to -1.
-
-        Returns:
-            bool: exit or not from the market
-        """
-        low_prices = self.low_prices(klines)
-        high_prices = self.high_prices(klines)
-        price_in_stop_loss = self.buy_prices[-1] * (1 - (self.stop_loss / 100))
-        if condition := low_prices[index] < price_in_stop_loss < high_prices[index]:
-            self.bougth_in_stop_loss = True
-            self.price_in_stop_loss = price_in_stop_loss
-        return condition
 
     def generate_chart(self, close_prices: NDArray, close_times: NDArray) -> None:
-        """_summary_
+        pass
 
-        Args:
-            close_prices (NDArray): _description_
-            close_times (NDArray): _description_
-        """
 
-        title = f"{self.symbol} chart"
-        # plt.title(title)
-        # plt.xlabel("time")
-        # plt.ylabel("usdt")
-        # plt.plot(np_close_times, np_close_price)
-        file_name = f"{self.symbol}_chart.png"
-        # plt.savefig(file_name)
-
-        _, ax = plt.subplots()
-        ax.set_title(title)
-        ax.set_xlabel("time")
-        ax.set_ylabel("usdt")
-        ax.plot(close_times, close_prices)
-        ax.plot(close_times, self.get_buy_prices(), "g.")
-        ax.plot(close_times, self.get_sell_prices(), "r.")
-        plt.savefig(file_name)
-
-    def buy_position(self, last_price: float) -> tuple[float]:
-        """_summary_
-
-        Args:
-            last_price (float): current price or close price
-
-        Returns:
-            tuple[float]: The first value is the money to be invested
-            calculated from the percentage to be invested and the available
-            balance. The second value is the amount of tokens purchased
-            from the crypto pair with the money to be invested.
-        """
-        logger.info("buying at %s", last_price)
-        money_to_investment = self.available_balance * (self.percentage_to_invest / 100)
-        currency_amount = money_to_investment / last_price
-        self.available_balance -= money_to_investment
-        self.position_held = True
-        logger.info(
-            "bought %s at %s. Amount %s",
-            money_to_investment,
-            last_price,
-            currency_amount,
-        )
-        return money_to_investment, currency_amount
-
-    def sell_position(
-        self, last_price: float, investment: float, currency_amount: float
-    ) -> None:
-        """_summary_
-
-        Args:
-            last_price (float): current price or close price
-            investment (float): _description_
-            currency_amount (float): _description_
-        """
-        logger.info("selling at %s", last_price)
-        if self.bougth_in_stop_loss:
-            logger.info(
-                "selling at SL %s instead %s", self.price_in_stop_loss, last_price
-            )
-            last_price = self.price_in_stop_loss
-            self.bougth_in_stop_loss = False
-
-        sale = last_price * currency_amount
-        earned = sale - investment
-        if earned >= 0:
-            self.wins += 1
-        else:
-            self.losses += 1
-        self.available_balance += sale
-        self.position_held = False
-        logger.info(
-            "Sold %s at %s. Earned %s. New balance %s",
-            currency_amount,
-            last_price,
-            earned,
-            self.available_balance,
-        )
-
-    async def get_historical_klines(self, start_time: str) -> dict[str, Any]:
-        """_summary_
-
-        Args:
-            start_time (str): _description_
-
-        Raises:
-            Exception: _description_
-
-        Returns:
-            dict[str, Any]: _description_
-        """
-        client = await create_binance_client()
-        try:
-            return await client.get_historical_klines(
-                self.symbol,
-                self.kline_interval,
-                start_time,
-            )
-        except:
-            raise Exception
-        finally:
-            await client.close_connection()
-
-    async def run(self) -> None:
+    def run(self, df: pd.DataFrame, *, index: int = -1) -> None:
         """run trading strategy"""
-        investment = 0
-        currency_amount = 0
-        self.start_time_back_testing = "9 days ago UTC"
-        while 1:
-            klines = await self.get_historical_klines(self.start_time_strategy)
-            close_prices = self.close_prices(klines)
+        df_1h = get_data(self.symbol, TIMEFRAME_1H)
+        df_1d = get_data(self.symbol, TIMEFRAME_1D)
 
-            last_price = close_prices[-1]
-            logger.info("Current price %s", last_price)
-            if self.entry_condition(klines):
-                investment, currency_amount = self.buy_position(last_price)
-                self.buy_prices.append(last_price)
-            elif self.exit_condition(klines):
-                last_price = self.sell_position(last_price, investment, currency_amount)
-                self.sell_prices.append(last_price)
-            # else:
-            #     logger.info("Nothing was bought or sold.")
+        df = self.indicators(df_1h, df_high=df_1d)
 
-            logger.info(
-                "Buys: %s. Sells: %s.", len(self.buy_prices), len(self.sell_prices)
+        # self.balance = self.initial_balance
+        # peak_balance = self.initial_balance
+        # max_drawdown = 0
+        # trades = []
+
+        # bot = TelegramBot(bot_token="your_token", chat_id="your_chat_id")
+        # msg = "Running live strategy"
+        # bot.send_telegram_message(msg)
+        # logger.info(msg)
+        entry_price = 0
+        units = 0
+        while True:
+            df_new, df_1d_new = (
+                fetch_candles(self.symbol, TIMEFRAME_1H, 50),
+                fetch_candles(self.symbol, TIMEFRAME_1D, 50),
             )
+            df, df_1d = update_data(df, df_new), update_data(df_1d, df_1d_new)
+            df = self.indicators(df,df_high=df_1d)
 
-            call: Call = Call(method="save", params={"buy": 0})
-            await send_rmq_msg("strategy", "trade", call)
-            await asyncio.sleep(5)
+            row = df.iloc[index]
+            # prev = df.iloc[-2]
+            # prev2 = df.iloc[-3]
 
-    async def back_testing(self) -> None:
+            # if np.isnan(row["ATR_MA"]):
+            #     continue
+
+            # enter_long = (
+            #     not position
+            #     and prev2["SPREAD_SIGN"] == -1
+            #     and prev["SPREAD_SIGN"] == -1
+            #     and row["SPREAD_SIGN"] == 1
+            #     and row["RSI"] < rsi_threshold
+            #     and row["MACD"] > row["MACD_SIGNAL"]
+            #     # and row['close'] < row['BB_LOWER']
+            #     # and row['ADX'] > ADX_THRESHOLD
+            #     # and row["close"] > row["EMA_FAST"]
+            #     # and row["ATR"] > row["ATR_MA"]
+            #     and row["BULLISH_TREND"]
+            # )
+
+            # exit_long = position and (
+            #     prev2["SPREAD_SIGN"] == 1 and prev["SPREAD_SIGN"] == 1 and row["SPREAD_SIGN"] == -1
+            #     # or (row['RSI'] > RSI_EXIT)
+            #     # or (row['MACD'] < row['MACD_SIGNAL'])
+            # )
+
+            # --- Entry Conditions ---
+            if self.entry_condition(df, index=index):
+                entry_price, entry_time, units = self.execute_entry(row)
+
+                # entry_price = row["close"] * (1 + self.slippage + self.commission)
+                # units = balance / entry_price
+                # self.position = True
+                # entry_time = row.name
+                # msg = f"📈 [ENTRY] {self.symbol} {entry_time} @ {entry_price:.2f}"
+                # logger.info(msg)
+                # bot.send_telegram_message(msg)
+                # # trailing_stop = row['close'] - atr_trail_mult * row['ATR_MA']
+
+            # --- Exit Conditions ---
+            elif self.exit_condition(df,index=index):
+                units = self.execute_exit(row, entry_price, entry_time, units)
+                # elif position and trailing_stop is not None:
+                #     trailing_stop = max(trailing_stop, row['close'] - atr_trail_mult * row['ATR_MA'])
+                #     if row['close'] < trailing_stop:
+                # exit_price = row["close"] * (1 - self.slippage - self.commission)
+                # pnl = (exit_price - entry_price) * units
+                # exit_time = row.name
+                # return_pct = pnl / (units * entry_price) * 100
+                # trades.append(
+                #     {
+                #         "entry_time": entry_time,
+                #         "exit_time": exit_time,
+                #         "entry_price": entry_price,
+                #         "exit_price": exit_price,
+                #         "pnl": pnl,
+                #         "return_pct": return_pct,
+                #         "old_balance": balance,
+                #         "new_balance": balance + pnl,
+                #     }
+                # )
+                # balance += pnl
+                # peak_balance = max(peak_balance, balance)
+                # drawdown = (peak_balance - balance) / peak_balance
+                # max_drawdown = max(max_drawdown, drawdown)
+                # self.position = False
+                # units = 0
+                # msg = (
+                #     f"📉 [LONG EXIT] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}\n"
+                #     f"PnL: ${pnl:.2f} | Return: {return_pct:.2f}%"
+                # )
+                # logger.info(msg)
+                # bot.send_telegram_message(msg)
+
+            wait_for_next_candle(TIMEFRAME_1H)
+
+    def back_testing(self, *, index: int = 0) -> None:
         """run back testing strategy"""
-        # initialise the client
-        klines = await self.get_historical_klines(self.start_time_back_testing)
-        close_prices = self.close_prices(klines)
-        # close_times = self.close_times(klines)
 
-        investment = 0
-        currency_amount = 0
-        for i in range(len(close_prices)):
-            last_price = close_prices[i]
-            if self.entry_condition(klines, index=i):
-                investment, currency_amount = self.buy_position(last_price)
-                self.buy_prices.append(last_price)
-            elif self.exit_condition(klines, index=i):
-                self.sell_position(last_price, investment, currency_amount)
-                self.sell_prices.append(last_price)
+        df_1h = get_data(self.symbol, TIMEFRAME_1H)
+        df_1d = get_data(self.symbol, TIMEFRAME_1D)
 
-        logger.info("Buys: %s. Sells: %s.", len(self.buy_prices), len(self.sell_prices))
-        logger.info("Wins: %s. Losses: %s.", self.wins, self.losses)
-        logger.info("Win rate: %s.", (self.wins / (self.wins + self.losses)) * 100)
+        df = self.indicators(df_1h, df_high=df_1d)
 
-        logger.info("Final Balance: %s.", self.available_balance)
-        logger.info("ROI: %s.", (self.available_balance / self.init_balance) * 100)
+        # balance = self.initial_balance
+        # peak_balance = self.initial_balance
+        # max_drawdown = 0
+        # trades = []
+        # trailing_stop = None
 
-        if self.position_held:
-            logger.info("Trading operation in progress.")
-        else:
-            logger.info(
-                "Profit from algorithm: %s.", self.available_balance - self.init_balance
-            )
+        # --- Backtest Logic ---
+        entry_price = 0
+        units = 0
+        for i in range(index, len(df)):
+            row = df.iloc[i]
 
+            # --- Entry Conditions ---
+            if self.entry_condition(df, index=i):
+                entry_price, entry_time, units = self.execute_entry(row, mode="backtest")
+                # entry_price = row["close"] * (1 + self.slippage + self.commission)
+                # units = balance / entry_price
+                # self.position = True
+                # entry_time = row.name
+                # # if mode == "backtest":
+                # msg = f"📈 [ENTRY] {self.symbol} {entry_time} @ {entry_price:.2f}"
+                # logger.info(msg)
+                # # trailing_stop = row['close'] - atr_trail_mult * row['ATR_MA']
+
+            # --- Exit Conditions ---
+            elif self.exit_condition(df,index=i):
+                self.execute_exit(row, entry_price, entry_time, units, mode="backtest")
+                # # elif position and trailing_stop is not None:
+                # #     trailing_stop = max(trailing_stop, row['close'] - atr_trail_mult * row['ATR_MA'])
+                # #     if row['close'] < trailing_stop:
+                # exit_price = row["close"] * (1 - self.slippage - self.commission)
+                # pnl = (exit_price - entry_price) * units
+                # exit_time = row.name
+                # return_pct = pnl / (units * entry_price) * 100
+                # # if mode == "backtest":
+                # trades.append(
+                #     {
+                #         "entry_time": entry_time,
+                #         "exit_time": exit_time,
+                #         "entry_price": entry_price,
+                #         "exit_price": exit_price,
+                #         "pnl": pnl,
+                #         "return_pct": return_pct,
+                #         "old_balance": balance,
+                #         "new_balance": balance + pnl,
+                #     }
+                # )
+                # balance += pnl
+                # peak_balance = max(peak_balance, balance)
+                # drawdown = (peak_balance - balance) / peak_balance
+                # max_drawdown = max(max_drawdown, drawdown)
+                # self.position = False
+                # units = 0
+                # msg = (
+                #     f"📉 [LONG EXIT] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}\n"
+                #     f"PnL: ${pnl:.2f} | Return: {return_pct:.2f}%"
+                # )
+                # logger.info(msg)
+                # bot.send_telegram_message(msg)
         # self.generate_chart(close_prices, close_times)
+
+    def execute_entry(self, row: pd.Series, *, mode: str = "run") -> tuple[float, pd.Timestamp, float]:
+        entry_price = row["close"] * (1 + self.slippage + self.commission)
+        units = self.balance / entry_price
+        self.position = True
+        entry_time = row.name
+        msg = f"📈 [ENTRY] {self.symbol} {entry_time} @ {entry_price:.2f}"
+        if mode == "backtest":
+            logger.info(msg)
+        if mode == "run":
+            self.bot.send_telegram_message(msg)
+        return entry_price, entry_time, units
+    
+
+    def execute_exit(
+        self, 
+        row: pd.Series, 
+        entry_price: float, 
+        entry_time: pd.Timestamp, 
+        units: float,
+        *, 
+        mode: str = "run"
+    ) -> None:
+        exit_price = row["close"] * (1 - self.slippage - self.commission)
+        pnl = (exit_price - entry_price) * units
+        exit_time = row.name
+        return_pct = pnl / (units * entry_price) * 100
+        self.trades.append(
+            {
+                "entry_time": entry_time,
+                "exit_time": exit_time,
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "pnl": pnl,
+                "return_pct": return_pct,
+                "old_balance": self.balance,
+                "new_balance": self.balance + pnl,
+            }
+        )
+        self.balance += pnl
+        self.peak_balance = max(self.peak_balance, self.balance)
+        drawdown = (self.peak_balance - self.balance) / self.peak_balance
+        self.max_drawdown = max(self.max_drawdown, drawdown)
+        self.position = False
+        units = 0
+        msg = (
+            f"📉 [LONG EXIT] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}\n"
+            f"PnL: ${pnl:.2f} | Return: {return_pct:.2f}%"
+        )
+        if mode == "backtest":
+            logger.info(msg)
+        if mode == "run":
+            self.bot.send_telegram_message(msg)
+        return units
+
+        # trailing_stop = row['close'] - atr_trail_mult * row['ATR_MA']
+
+        # # initialise the client
+        # klines = await self.get_historical_klines(self.start_time_back_testing)
+        # close_prices = self.close_prices(klines)
+        # # close_times = self.close_times(klines)
+
+        # investment = 0
+        # currency_amount = 0
+        # for i in range(len(close_prices)):
+        #     last_price = close_prices[i]
+        #     if self.entry_condition(klines, index=i):
+        #         investment, currency_amount = self.buy_position(last_price)
+        #         self.buy_prices.append(last_price)
+        #     elif self.exit_condition(klines, index=i):
+        #         self.sell_position(last_price, investment, currency_amount)
+        #         self.sell_prices.append(last_price)
+
+        # logger.info("Buys: %s. Sells: %s.", len(self.buy_prices), len(self.sell_prices))
+        # logger.info("Wins: %s. Losses: %s.", self.wins, self.losses)
+        # logger.info("Win rate: %s.", (self.wins / (self.wins + self.losses)) * 100)
+
+        # logger.info("Final Balance: %s.", self.available_balance)
+        # logger.info("ROI: %s.", (self.available_balance / self.init_balance) * 100)
+
+        # if self.position_held:
+        #     logger.info("Trading operation in progress.")
+        # else:
+        #     logger.info(
+        #         "Profit from algorithm: %s.", self.available_balance - self.init_balance
+        #     )
+
+        
