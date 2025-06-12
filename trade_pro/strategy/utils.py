@@ -1,7 +1,8 @@
 import datetime
-import logging
+import json
 import time
 from pathlib import Path
+from typing import Any
 
 import ccxt
 import pandas as pd
@@ -9,6 +10,7 @@ import pandas as pd
 CURRENT_DIR = Path(__file__).parent
 IMAGES_DIR = CURRENT_DIR.joinpath("images")
 DATA_DIR = CURRENT_DIR.joinpath("data")
+CONFIG_DIR = CURRENT_DIR.joinpath("config")
 
 exchange = ccxt.binance()
 
@@ -54,12 +56,20 @@ def fetch_data(symbol: str, timeframe: str) -> None:
         )
         init_date += pd.Timedelta(1000, timeframe[-1])
 
-    df = pd.DataFrame(
-        ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"]
-    )
+    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     df.set_index("timestamp", inplace=True)
     df = df.drop_duplicates()
     if df.index.duplicated().any():
         print(f"There are duplicated dates {df[df.index.duplicated()]}")
     df.to_csv(DATA_DIR.joinpath(f"{symbol.replace('/', '')}_{timeframe}.csv"))
+
+
+def load_strategy_config(file_name: str) -> dict[str, Any]:
+    config_path = CONFIG_DIR.joinpath(f"{file_name}.json")
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    with config_path.open("r", encoding="utf-8") as f:
+        return json.load(f)

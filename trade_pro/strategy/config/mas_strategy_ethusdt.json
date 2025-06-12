@@ -1,0 +1,14 @@
+{
+    "symbol": "ETHUSDT",
+    "initial_balance": 2000,
+    "timeframes": ["1h", "1d"],
+    "start_backtest_index": 2,
+    "fast": 12,
+    "slow": 70,
+    "rsi_period": 29,
+    "rsi_threshold": 68,
+    "macd_fast": 20,
+    "macd_slow": 40,
+    "macd_signal": 17,
+    "trend_sma_period": 12
+}

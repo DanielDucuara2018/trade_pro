@@ -1,40 +1,15 @@
-import asyncio
 import logging
-import subprocess
 
-import click
-
-from trade_pro.strategy import get_module
+from trade_pro.strategy import get_module_class
+from trade_pro.strategy.utils import load_strategy_config
 
 logger = logging.getLogger(__name__)
 
 
-def run(mode: str, strategy_name: str):
-    logger.info("Running main proccess")
-    subprocess.Popen([mode, "--name", strategy_name])
-
-
-@click.command()
-@click.option("--name", required=True, type=str)
-def strategy(name):
-    logger.info("Running strategy proccess %s", name)
-    module = get_module(name)
-    logger.info("Found module strategy %s", module)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(module.init.run())
-
-
-@click.command()
-@click.option("--name", required=True, type=str)
-def back_testing(name):
-    logger.info("Running back_testing proccess strategy %s", name)
-    module = get_module(name)
-    logger.info("Found module strategy %s", module)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(module.init.back_testing())
-
-
-@click.command()
-@click.option("--name", required=True, type=str)
-def sginals(name):
-    pass
+def run(mode: str, strategy_name: str, file_name: str) -> None:
+    logger.info("Loading strategy config %s", strategy_name)
+    config = load_strategy_config(file_name)
+    cls = get_module_class(strategy_name)
+    logger.info("Found strategy class %s", cls)
+    logger.info("Running strategy %s", strategy_name)
+    cls(**config).run(mode)

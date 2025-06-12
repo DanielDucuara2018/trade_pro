@@ -20,7 +20,6 @@ class Error(Exception):
 
 
 class NotDataFound(Error):
-
     code = 1001
     reason = "not-data-found"
     description = "Not data found in DB"

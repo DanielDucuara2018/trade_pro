@@ -1,60 +1,69 @@
+import numpy as np
 import pandas as pd
 import pandas_ta as ta
-import numpy as np
+
 from trade_pro.strategy.base import Base
 
 
 class MASStrategy(Base):
     def __init__(
         self,
-        fast,
-        slow,
-        rsi_period,
-        macd_fast,
-        macd_slow,
-        macd_signal,
-        trend_sma_period,
-        volume_ma_period,
+        symbol: str,
+        initial_balance: float,
+        timeframes: list[str],
+        start_backtest_index: int,
+        fast: float,
+        slow: float,
+        rsi_period: float,
+        rsi_threshold: float,
+        macd_fast: float,
+        macd_slow: float,
+        macd_signal: float,
+        trend_sma_period: float,
     ):
+        super().__init__(
+            symbol, initial_balance, timeframes, start_backtest_index=start_backtest_index
+        )
         self.fast = fast
         self.slow = slow
         self.rsi_period = rsi_period
+        self.rsi_threshold = rsi_threshold
         self.macd_fast = macd_fast
         self.macd_slow = macd_slow
         self.macd_signal = macd_signal
         self.trend_sma_period = trend_sma_period
-        self.volume_ma_period = volume_ma_period
 
-    def indicators(self, df: pd.DataFrame, *, df_high: pd.DataFrame | None = None) -> pd.Dataframe:
+    def compute_indicators(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
         """calculates the indicators used in buying and selling"""
 
+        # get data
+        df_1h = data["1h"]
+        df_1d = data["1d"]
+
         # --- Moving Average Spread ---
-        df["FAST"] = ta.sma(df["close"], length=self.fast)
-        df["SLOW"] = ta.sma(df["close"], length=self.slow)
-        df["SPREAD"] = df["FAST"] - df["SLOW"]
-        df["SPREAD_SIGN"] = np.where(df["SPREAD"] > 0, 1, -1)
+        df_1h["FAST"] = ta.sma(df_1h["close"], length=self.fast)
+        df_1h["SLOW"] = ta.sma(df_1h["close"], length=self.slow)
+        df_1h["SPREAD"] = df_1h["FAST"] - df_1h["SLOW"]
+        df_1h["SPREAD_SIGN"] = np.where(df_1h["SPREAD"] > 0, 1, -1)
 
         # --- RSI ---
-        df["RSI"] = ta.rsi(df["close"], length=self.rsi_period)
+        df_1h["RSI"] = ta.rsi(df_1h["close"], length=self.rsi_period)
 
         # --- MACD ---
-        macd = ta.macd(df["close"], self.macd_fast,self.macd_slow, self.macd_signal)
-        df["MACD"], df["MACD_SIGNAL"] = (
+        macd = ta.macd(df_1h["close"], self.macd_fast, self.macd_slow, self.macd_signal)
+        df_1h["MACD"], df_1h["MACD_SIGNAL"] = (
             macd[f"MACD_{self.macd_fast}_{self.macd_slow}_{self.macd_signal}"],
             macd[f"MACDs_{self.macd_fast}_{self.macd_slow}_{self.macd_signal}"],
         )
 
-        # --- Volume MA ---
-        df["VOLUME_MA"] = df["volume"].rolling(self.volume_ma_period).mean()
-
         # --- Daily SMA Trend Filter ---
-        df_high[f"SMA{self.trend_sma_period}"] = ta.sma(df_high["close"], self.trend_sma_period)
-        df_high["BULLISH_TREND"] = df_high["close"] > df_high[f"SMA{self.trend_sma_period}"]
-        df["BULLISH_TREND"] = df_high["BULLISH_TREND"].reindex(df.index, method="ffill")
-        
-        return df
+        df_1d[f"SMA{self.trend_sma_period}"] = ta.sma(df_1d["close"], self.trend_sma_period)
+        df_1d["BULLISH_TREND"] = df_1d["close"] > df_1d[f"SMA{self.trend_sma_period}"]
+        df_1h["BULLISH_TREND"] = df_1d["BULLISH_TREND"].reindex(df_1h.index, method="ffill")
 
-    def entry_condition(self, df: pd.DataFrame,  *, index: int = 0) -> bool:
+        return df_1h
+
+    def entry_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
         """Buy when the price is higher than the dema indicator and the fast tema
         crosses the slow tema upwards."""
 
@@ -70,10 +79,9 @@ class MASStrategy(Base):
             and row["RSI"] < self.rsi_threshold
             and row["MACD"] > row["MACD_SIGNAL"]
             and row["BULLISH_TREND"]
-            and row["volume"] > row["VOLUME_MA"]
         )
 
-    def exit_condition(self, df: pd.DataFrame,  *, index: int = 0) -> bool:
+    def exit_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
         """Sell when the price is higher than the dema indicator and the fast tema
         crosses the slow tema downwards"""
         row = df.iloc[index]
