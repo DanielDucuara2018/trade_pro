@@ -46,11 +46,18 @@ pre-commit run --all-files
 python trade_pro/main.py run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
 ```
 
-#### 4.2 Trough docker image
+#### 4.2 Trough dockerfile image
 
 ```bash
 docker build -t trade_pro .
-docker run trade_pro run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+docker run --rm trade_pro run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+```
+
+#### 4.3 Trough docker compose
+
+```bash
+docker compose up -d mongo mongo-express
+docker compose run --rm trade_pro run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
 ```
 
 ### 5. Fetch market data
@@ -61,11 +68,18 @@ docker run trade_pro run --mode backtest --name mas_strategy --config mas_strate
 python trade_pro/main.py fetch --ticker BTCUSDT --timeframe 1d --start-date 2017-01-01 --end-date 2025-06-13
 ```
 
-#### 5.2 Trough docker image
+#### 5.2 Trough dockerfile image
 
 ```bash
 docker build -t trade_pro .
-docker run trade_pro fetch --ticker BTCUSDT --timeframe 1d --start-date 2017-01-01 --end-date 2025-06-13
+docker run --rm trade_pro fetch --ticker BTCUSDT --timeframe 1d --start-date 2017-01-01 --end-date 2025-06-13
+```
+
+#### 5.3 Trough docker compose
+
+```bash
+docker compose up -d mongo mongo-express
+docker compose run --rm trade_pro fetch --ticker BTCUSDT --timeframe 1d --start-date 2017-01-01 --end-date 2025-06-13
 ```
 
 ## Project Structure

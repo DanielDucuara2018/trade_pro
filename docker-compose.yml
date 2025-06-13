@@ -1,45 +1,41 @@
-# TODO update this dockerfile. RMQ no needed, postgres no needed
-version: "3.7"
-
-networks:
-  trade_pro_bridge:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 169.254.7.0/24
+version: '3.8'
 
 services:
-  app:
+  trade_pro:
+    image: trade_pro
     build:
-      context: ./
-      dockerfile: ./Dockerfile
-    networks:
-      trade_pro:
-        ipv4_address: 169.254.7.2
-    env_file:
-      - .env
-    volumes:
-      - ./:/app/
-      - /app/trade_pro.egg-info/
-
-  postgres:
-    image: postgres:10-alpine
-    networks:
-      trade_pro:
-        ipv4_address: 169.254.7.3
+      context: .
+      dockerfile: Dockerfile
+    container_name: trade_pro
+    depends_on:
+      - mongo
     environment:
-      POSTGRES_PASSWORD: postgres
+      - MONGO_URI=mongodb://mongo:27017
     volumes:
-      - ./pgsql/init.d:/docker-entrypoint-initdb.d
+      - .:/app
+    entrypoint: ["python", "trade_pro/main.py"]
+    restart: unless-stopped
 
-  rabbitmq:
-    image: rabbitmq:3.8.5-management-alpine
-    networks:
-      trade_pro:
-        ipv4_address: 169.254.7.4
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    restart: unless-stopped
     ports:
-        - 5672:5672
-        - 15672:15672
+      - "27017:27017"
     volumes:
-      - ./rmq/data/:/var/lib/rabbitmq/
-      - ./rmq/log/:/var/log/rabbitmq
+      - mongo_data:/data/db
+
+  mongo-express:
+    image: mongo-express:1.0.0-alpha.4
+    container_name: mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongo
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin
+
+volumes:
+  mongo_data:
