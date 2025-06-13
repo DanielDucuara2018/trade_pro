@@ -1,3 +1,4 @@
+# TODO update this dockerfile. RMQ no needed, postgres no needed
 version: "3.7"
 
 networks:

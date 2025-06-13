@@ -1,22 +1,15 @@
-FROM python:3.9
+FROM python:3.12.3-slim
 
 WORKDIR /app
+COPY pyproject.toml .
+COPY trade_pro trade_pro
 
-COPY . .
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    git \
+    build-essential &&\
+    rm -rf /var/lib/apt/lists/*
+RUN python -m pip install --upgrade pip
+RUN pip install --no-cache-dir -e .
 
-RUN pip install --no-cache-dir --upgrade pip
-
-RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
-    tar -xvzf ta-lib-0.4.0-src.tar.gz && \
-    cd ta-lib/ && \
-    ./configure --prefix=/usr && \
-    make && \
-    make install && \
-    rm -Rf ta-lib ta-lib-0.4.0-src.tar.gz
-
-RUN --mount=type=cache,target=/root/.cache pip install --editable .
-
-RUN apt update -y && apt install supervisor -y
-COPY ./supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-ENTRYPOINT ["/usr/bin/supervisord"]
+ENTRYPOINT ["python", "trade_pro/main.py"]
