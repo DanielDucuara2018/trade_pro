@@ -1,0 +1,29 @@
+name: Check format
+
+on:
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.10.11
+
+      - name: Install development requirements
+        run: pip install pre-commit
+
+      - name: Check via pre-commit
+        run: |
+          pre-commit install
+          pre-commit run --files $(git diff --name-only origin/${{ github.base_ref }}...origin/${{ github.head_ref }}) --show-diff-on-failure
