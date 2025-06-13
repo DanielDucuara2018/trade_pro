@@ -43,14 +43,29 @@ pre-commit run --all-files
 #### 4.1 In virtual environnement
 
 ```bash
-python trade_pro/main.py --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+python trade_pro/main.py run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
 ```
 
 #### 4.2 Trough docker image
 
 ```bash
 docker build -t trade_pro .
-docker run trade_pro --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+docker run trade_pro run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+```
+
+### 5. Fetch market data
+
+#### 5.1 In virtual environnement
+
+```bash
+python trade_pro/main.py fetch --ticker BTCUSDT --timeframe 1d --start-date 2017-01-01 --end-date 2025-06-13
+```
+
+#### 5.2 Trough docker image
+
+```bash
+docker build -t trade_pro .
+docker run trade_pro fetch --ticker BTCUSDT --timeframe 1d --start-date 2017-01-01 --end-date 2025-06-13
 ```
 
 ## Project Structure

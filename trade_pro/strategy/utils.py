@@ -44,17 +44,17 @@ def get_data(symbol: str, timeframe: str) -> pd.DataFrame:
     return df.drop_duplicates()
 
 
-def fetch_data(symbol: str, timeframe: str) -> None:
+def fetch_data(
+    symbol: str, timeframe: str, start_date: pd.Timestamp, end_date: pd.Timestamp
+) -> None:
     ohlcv = []
     limit = 1000
-    init_date = pd.Timestamp("2017-01-01")
-    today = pd.Timestamp.today()
     exchange = ccxt.binance()
-    while init_date < today:
+    while start_date < end_date:
         ohlcv += exchange.fetch_ohlcv(
-            symbol, since=init_date.value // 10**6, limit=limit, timeframe=timeframe
+            symbol, since=start_date.value // 10**6, limit=limit, timeframe=timeframe
         )
-        init_date += pd.Timedelta(1000, timeframe[-1])
+        start_date += pd.Timedelta(1000, timeframe[-1])
 
     df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
