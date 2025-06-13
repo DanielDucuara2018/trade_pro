@@ -40,13 +40,13 @@ pre-commit run --all-files
 
 ### 4. Run Project
 
-### 4.1 In virtual environnement
+#### 4.1 In virtual environnement
 
 ```bash
 python trade_pro/main.py --mode backtest --name mas_strategy --config mas_strategy_btcusdt
 ```
 
-### 4.2 Trough docker image
+#### 4.2 Trough docker image
 
 ```bash
 docker build -t trade_pro .
