@@ -3,6 +3,7 @@ import logging
 import click
 import pandas as pd
 
+from trade_pro.strategy.base import Mode
 from trade_pro.strategy.runner import run as strategy_runner
 from trade_pro.strategy.utils import fetch_data
 
@@ -19,7 +20,7 @@ def cli():
 
 
 @cli.command()
-@click.option("--mode", required=True, type=click.Choice(["live", "backtest", "optimization"]))
+@click.option("--mode", required=True, type=click.Choice([mode.value for mode in Mode]))
 @click.option("--name", required=True)
 @click.option("--config", required=True)
 def run(mode: str, name: str, config: str):

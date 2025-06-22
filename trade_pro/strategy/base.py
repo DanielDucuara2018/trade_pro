@@ -1,5 +1,6 @@
 import logging
 from abc import abstractmethod
+from enum import StrEnum
 from typing import Any
 
 import numpy as np
@@ -8,6 +9,12 @@ import pandas as pd
 from trade_pro.strategy.utils import fetch_candles, get_data, update_data
 
 logger = logging.getLogger(__name__)
+
+
+class Mode(StrEnum):
+    BACKTEST = "backtest"
+    LIVE = "live"
+    OPTIMIZATION = "optimization"
 
 
 class Base:
@@ -95,9 +102,9 @@ class Base:
         histo_data = {timeframe: get_data(self.symbol, timeframe) for timeframe in self.timeframes}
         data = self.compute_indicators(histo_data)
         self.mode = mode
-        if self.mode == "backtest":
+        if self.mode == Mode.BACKTEST:
             self.backtest(data)
-        elif self.mode == "live":
+        elif self.mode == Mode.LIVE:
             self.live(data, histo_data)
 
     def live(self, data: pd.DataFrame, histo_data: dict[str, pd.DataFrame]) -> None:
@@ -146,9 +153,9 @@ class Base:
         self.position = True
         entry_time = row.name
         msg = f"📈 [ENTRY] {self.symbol} {entry_time} @ {entry_price:.2f}"
-        if self.mode == "backtest":
+        if self.mode == Mode.BACKTEST:
             logger.info(msg)
-        if self.mode == "live":
+        if self.mode == Mode.LIVE:
             self.bot.send_telegram_message(msg)
         return entry_price, entry_time, units
 
@@ -184,9 +191,9 @@ class Base:
             f"📉 [LONG EXIT] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}."
             f"PnL: ${pnl:.2f} | Return: {return_pct:.2f}%"
         )
-        if self.mode == "backtest":
+        if self.mode == Mode.BACKTEST:
             logger.info(msg)
-        if self.mode == "run":
+        if self.mode == Mode.LIVE:
             self.bot.send_telegram_message(msg)
 
     def resume_backtest(self, trades: list[dict[str, Any]]):
