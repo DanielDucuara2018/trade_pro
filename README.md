@@ -43,21 +43,21 @@ pre-commit run --all-files
 #### 4.1 In virtual environnement
 
 ```bash
-python trade_pro/main.py run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+python trade_pro/main.py run --mode backtest --name MASStrategy --config mas_strategy_btcusdt
 ```
 
 #### 4.2 Trough dockerfile image
 
 ```bash
 docker build -t trade_pro .
-docker run --rm trade_pro run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+docker run --rm trade_pro run --mode backtest --name MASStrategy --config mas_strategy_btcusdt
 ```
 
 #### 4.3 Trough docker compose
 
 ```bash
 docker compose up -d mongo mongo-express
-docker compose run --rm trade_pro run --mode backtest --name mas_strategy --config mas_strategy_btcusdt
+docker compose run --rm trade_pro run --mode backtest --name MASStrategy --config mas_strategy_btcusdt
 ```
 
 ### 5. Fetch market data

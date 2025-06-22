@@ -10,17 +10,17 @@ CURRENT_DIR = Path(__file__).parent
 STRATEGIES_PATH = CURRENT_DIR.joinpath("strategies")
 
 
-def get_module_class(name: str) -> Type[Base]:
-    available_names = [mod_name for _, mod_name, _ in iter_modules([STRATEGIES_PATH])]
+def get_module_class(class_name: str) -> Type[Base]:
+    for _, mod_name, _ in iter_modules([STRATEGIES_PATH]):
+        module = import_module(f".strategies.{mod_name}", __package__)
+        attr = getattr(module, class_name, None)
 
-    if name not in available_names:
-        raise Exception(f"Strategy {name} not found")
-
-    module = import_module(f".strategies.{name}", __package__)
-
-    for attr_name in dir(module):
-        attr = getattr(module, attr_name)
-        if inspect.isclass(attr) and issubclass(attr, Base) and attr is not Base:
+        if (
+            attr is not None
+            and inspect.isclass(attr)
+            and issubclass(attr, Base)
+            and attr is not Base
+        ):
             return attr
 
-    raise Exception(f"No subclass of Base found in strategy module '{name}'")
+    raise Exception(f"Class '{class_name}' not found in any strategy module.")
