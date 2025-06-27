@@ -76,6 +76,7 @@ def run_optimization(cls: Type[Base], config: dict[str, Any]) -> None:
 
         return scoring_function(strategy_instance)
 
+    logger.info("Run optimization process for %s with score %s", cls.__name__, score_method_name)
     study = create_study(direction="maximize")
     study.optimize(objective, n_trials=n_trials, n_jobs=n_jobs)
 

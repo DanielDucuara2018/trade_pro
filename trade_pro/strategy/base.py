@@ -105,7 +105,7 @@ class Base:
 
     def run(self, mode: str) -> None:
         self.mode = mode
-        if self.check_config():
+        if not self.check_config():
             msg = "Invalid combination of strategy parameters. Please check your configuration."
             if self.mode != Mode.OPTIMIZATION:
                 raise ValueError(msg)

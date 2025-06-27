@@ -17,6 +17,7 @@ dependencies = [
     "pandas_ta==0.3.14b0",
     "ruff==0.11.10",
     "pre-commit==4.2.0",
+    "optuna==4.4.0",
 ]
 
 [build-system]

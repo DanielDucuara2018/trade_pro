@@ -24,7 +24,7 @@
             "macd_signal" : {"start": 5, "end": 20},
             "trend_sma_period" : {"start": 10, "end": 300}
         },
-        "score_method": "risk_adjusted",
+        "score_method": "balance_consistency",
         "n_trials": 1000
     }
 }
