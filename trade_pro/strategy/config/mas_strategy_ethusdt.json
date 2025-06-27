@@ -1,14 +1,30 @@
 {
-    "symbol": "ETHUSDT",
-    "initial_balance": 2000,
-    "timeframes": ["1h", "1d"],
-    "start_backtest_index": 2,
-    "fast": 12,
-    "slow": 70,
-    "rsi_period": 29,
-    "rsi_threshold": 68,
-    "macd_fast": 20,
-    "macd_slow": 40,
-    "macd_signal": 17,
-    "trend_sma_period": 12
+    "strategy":{
+        "symbol": "ETHUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1h", "1d"],
+        "start_backtest_index": 2,
+        "fast": 12,
+        "slow": 70,
+        "rsi_period": 29,
+        "rsi_threshold": 68,
+        "macd_fast": 20,
+        "macd_slow": 40,
+        "macd_signal": 17,
+        "trend_sma_period": 12
+    },
+    "optimization": {
+        "variables":{
+            "fast": {"start": 5, "end": 80},
+            "slow": {"start": 30, "end": 250},
+            "rsi_period" : {"start": 5, "end": 30},
+            "rsi_threshold" : {"start": 30, "end": 70},
+            "macd_fast" : {"start": 5, "end": 20},
+            "macd_slow" : {"start": 15, "end": 50},
+            "macd_signal" : {"start": 5, "end": 20},
+            "trend_sma_period" : {"start": 10, "end": 300}
+        },
+        "score_method": "risk_adjusted",
+        "n_trials": 1000
+    }
 }

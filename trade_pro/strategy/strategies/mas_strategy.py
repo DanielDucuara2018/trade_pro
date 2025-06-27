@@ -33,6 +33,9 @@ class MASStrategy(Base):
         self.macd_signal = macd_signal
         self.trend_sma_period = trend_sma_period
 
+    def check_config(self) -> bool:
+        return self.fast >= self.slow or self.macd_fast >= self.macd_slow
+
     def compute_indicators(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
         """calculates the indicators used in buying and selling"""
 

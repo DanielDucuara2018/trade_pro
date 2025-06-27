@@ -49,10 +49,15 @@ class Base:
         self.start_live_index = start_live_index
 
         self.balance = self.initial_balance
-        self.peak_balance = self.initial_balance
         self.max_drawdown = 0
+        self.profit_factor = 0
+        self.win_rate = 0
         self.trades = []
         self.mode = None
+
+    @abstractmethod
+    def check_config(self) -> bool:
+        pass
 
     @abstractmethod
     def compute_indicators(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -99,10 +104,17 @@ class Base:
         pass
 
     def run(self, mode: str) -> None:
+        self.mode = mode
+        if self.check_config():
+            msg = "Invalid combination of strategy parameters. Please check your configuration."
+            if self.mode != Mode.OPTIMIZATION:
+                raise ValueError(msg)
+            logger.warning(msg)
+            return
+
         histo_data = {timeframe: get_data(self.symbol, timeframe) for timeframe in self.timeframes}
         data = self.compute_indicators(histo_data)
-        self.mode = mode
-        if self.mode == Mode.BACKTEST:
+        if self.mode == Mode.BACKTEST or self.mode == Mode.OPTIMIZATION:
             self.backtest(data)
         elif self.mode == Mode.LIVE:
             self.live(data, histo_data)
@@ -183,9 +195,6 @@ class Base:
             }
         )
         self.balance += pnl
-        self.peak_balance = max(self.peak_balance, self.balance)
-        drawdown = (self.peak_balance - self.balance) / self.peak_balance
-        self.max_drawdown = max(self.max_drawdown, drawdown)
         self.position = False
         msg = (
             f"📉 [LONG EXIT] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}."
@@ -198,8 +207,6 @@ class Base:
 
     def resume_backtest(self, trades: list[dict[str, Any]]):
         trade_df = pd.DataFrame(trades)
-        logger.info("\nTrade Summary:")
-        logger.info(trade_df)
 
         # Performance Metrics
         returns = [t["return_pct"] for t in trades]
@@ -210,24 +217,28 @@ class Base:
         value_weighted_win_rate = (
             total_wins / (total_wins + total_losses) * 100 if (total_wins + total_losses) > 0 else 0
         )
-        win_rate = len(wins) / len(trade_df) * 100
-        profit_factor = total_wins / total_losses if total_losses != 0 else float("inf")
-        max_drawdown = (trade_df["pnl"].cumsum().cummax() - trade_df["pnl"].cumsum()).max()
+        self.win_rate = len(wins) / len(trade_df) * 100
+        self.profit_factor = total_wins / total_losses if total_losses != 0 else float("inf")
+        self.max_drawdown = (trade_df["pnl"].cumsum().cummax() - trade_df["pnl"].cumsum()).max()
         total_pnl = trade_df["pnl"].sum()
         sharpe_like = float("nan")
         if len(returns) > 0:
             sharpe_like = np.mean(returns) / (np.std(returns) + 1e-9)  # avoid div by zero
 
-        logger.info("\nStats:")
-        logger.info(f"Total Trades: {len(trade_df)}")
-        logger.info(f"Win Trades: {len(wins)}")
-        logger.info(f"Lose Trades: {len(losses)}")
-        logger.info(f"Max win: ${wins['pnl'].max():.2f}")
-        logger.info(f"Max lose: ${losses['pnl'].min():.2f}")
-        logger.info(f"Win Rate (Count-Based): {win_rate:.2f}%")
-        logger.info(f"Win Rate (PnL-Weighted): {value_weighted_win_rate:.2f}%")
-        logger.info(f"Profit Factor: {profit_factor:.2f}")
-        logger.info(f"Sharpe-like Ratio (return_pct/std): {sharpe_like:.2f}")
-        logger.info(f"Max Drawdown: ${max_drawdown:.2f}")
-        logger.info(f"Total PnL: ${total_pnl:.2f}")
-        logger.info(f"Final Balance: ${(total_pnl + self.initial_balance):.2f}")
+        if self.mode == Mode.BACKTEST:
+            logger.info("\nTrade Summary:")
+            logger.info(trade_df)
+
+            logger.info("\nStats:")
+            logger.info(f"Total Trades: {len(trade_df)}")
+            logger.info(f"Win Trades: {len(wins)}")
+            logger.info(f"Lose Trades: {len(losses)}")
+            logger.info(f"Max win: ${wins['pnl'].max():.2f}")
+            logger.info(f"Max lose: ${losses['pnl'].min():.2f}")
+            logger.info(f"Win Rate (Count-Based): {self.win_rate:.2f}%")
+            logger.info(f"Win Rate (PnL-Weighted): {value_weighted_win_rate:.2f}%")
+            logger.info(f"Profit Factor: {self.profit_factor:.2f}")
+            logger.info(f"Sharpe-like Ratio (return_pct/std): {sharpe_like:.2f}")
+            logger.info(f"Max Drawdown: ${self.max_drawdown:.2f}")
+            logger.info(f"Total PnL: ${total_pnl:.2f}")
+            logger.info(f"Final Balance: ${(total_pnl + self.initial_balance):.2f}")
