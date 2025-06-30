@@ -1,0 +1,20 @@
+{
+    "strategy":{
+        "symbol": "BTCUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1h"],
+        "start_backtest_index": 1,
+        "std_window": 48,
+        "band_upper_multiplier": 0.5,
+        "band_lower_multiplier": 2.1
+    },
+    "optimization": {
+        "variables":{
+            "std_window": {"low": 10, "high": 50},
+            "band_upper_multiplier": {"low": 0.5, "high": 3.0, "step": 0.1},
+            "band_lower_multiplier": {"low": 0.5, "high": 3.0, "step": 0.1}
+        },
+        "score_method": "balance_consistency",
+        "n_trials": 1000
+    }
+}

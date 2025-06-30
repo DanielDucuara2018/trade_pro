@@ -44,6 +44,15 @@ SCORE_METHODS: dict[str, Callable[[Base], float]] = {
 }
 
 
+def select_suggest_type(trial: Trial, param: str, **kwargs) -> int | float:
+    if isinstance(kwargs["low"], int):
+        return trial.suggest_int(param, **kwargs)
+    elif isinstance(kwargs["low"], float):
+        return trial.suggest_float(param, **kwargs)
+    else:
+        raise ValueError(f"There is not a suggest type defined for {type(kwargs['low'])}")
+
+
 def run_optimization(cls: Type[Base], config: dict[str, Any]) -> None:
     symbol = config["strategy"]["symbol"]
     optimization_config: dict[str, Any] = config.get("optimization")
@@ -66,8 +75,8 @@ def run_optimization(cls: Type[Base], config: dict[str, Any]) -> None:
 
     def objective(trial: Trial) -> float:
         optimization_values = {
-            param: trial.suggest_int(param, limits["start"], limits["end"])
-            for param, limits in optimization_variables.items()
+            param: select_suggest_type(trial, param, **kwargs)
+            for param, kwargs in optimization_variables.items()
         }
 
         strategy_config = config["strategy"] | optimization_values

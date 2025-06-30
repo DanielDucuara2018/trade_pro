@@ -1,0 +1,20 @@
+{
+    "strategy":{
+        "symbol": "ETHUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1h"],
+        "start_backtest_index": 1,
+        "tema_fast": 53,
+        "tema_slow": 127,
+        "dema_period": 199
+    },
+    "optimization": {
+        "variables":{
+            "tema_fast": {"low": 5, "high": 80},
+            "tema_slow": {"low": 30, "high": 250},
+            "dema_period" : {"low": 5, "high": 200}
+        },
+        "score_method": "balance_consistency",
+        "n_trials": 1000
+    }
+}

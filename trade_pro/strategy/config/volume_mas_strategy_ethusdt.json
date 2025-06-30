@@ -16,15 +16,15 @@
     },
     "optimization": {
         "variables":{
-            "fast": {"start": 5, "end": 80},
-            "slow": {"start": 30, "end": 250},
-            "rsi_period" : {"start": 5, "end": 30},
-            "rsi_threshold" : {"start": 30, "end": 70},
-            "macd_fast" : {"start": 5, "end": 20},
-            "macd_slow" : {"start": 15, "end": 50},
-            "macd_signal" : {"start": 5, "end": 20},
-            "trend_sma_period" : {"start": 10, "end": 300},
-            "volume_ma_period": {"start": 5, "end": 50}
+            "fast": {"low": 5, "high": 80},
+            "slow": {"low": 30, "high": 250},
+            "rsi_period" : {"low": 5, "high": 30},
+            "rsi_threshold" : {"low": 30, "high": 70},
+            "macd_fast" : {"low": 5, "high": 20},
+            "macd_slow" : {"low": 15, "high": 50},
+            "macd_signal" : {"low": 5, "high": 20},
+            "trend_sma_period" : {"low": 10, "high": 300},
+            "volume_ma_period": {"low": 5, "high": 50}
         },
         "score_method": "risk_adjusted",
         "n_trials": 1000

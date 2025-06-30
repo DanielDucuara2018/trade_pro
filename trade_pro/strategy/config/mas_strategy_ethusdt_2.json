@@ -1,18 +1,17 @@
 {
     "strategy":{
-        "symbol": "BTCUSDT",
+        "symbol": "ETHUSDT",
         "initial_balance": 2000,
         "timeframes": ["1h", "1d"],
         "start_backtest_index": 2,
-        "fast": 9,
-        "slow": 77,
-        "rsi_period": 28,
-        "rsi_threshold": 67,
-        "macd_fast": 19,
-        "macd_slow": 44,
-        "macd_signal": 7,
-        "trend_sma_period": 10,
-        "volume_ma_period": 13
+        "fast": 37,
+        "slow": 79,
+        "rsi_period": 16,
+        "rsi_threshold": 65,
+        "macd_fast": 9,
+        "macd_slow": 43,
+        "macd_signal": 19,
+        "trend_sma_period": 15
     },
     "optimization": {
         "variables":{
@@ -23,10 +22,9 @@
             "macd_fast" : {"low": 5, "high": 20},
             "macd_slow" : {"low": 15, "high": 50},
             "macd_signal" : {"low": 5, "high": 20},
-            "trend_sma_period" : {"low": 10, "high": 300},
-            "volume_ma_period": {"low": 5, "high": 50}
+            "trend_sma_period" : {"low": 10, "high": 300}
         },
-        "score_method": "risk_adjusted",
+        "score_method": "balance_consistency",
         "n_trials": 1000
     }
 }

@@ -6,6 +6,34 @@ from trade_pro.strategy.base import Base
 
 
 class MASStrategy(Base):
+    """
+    A trading strategy based on Moving Average Spread (MAS), enhanced with RSI, MACD,
+    and a daily SMA trend filter to determine entries and exits.
+
+    Entry Conditions:
+        - MAS crossover: The spread between fast and slow SMAs crosses from negative to positive.
+        - RSI is below a specified threshold (indicating a potential oversold condition).
+        - MACD is above the MACD signal line (momentum confirmation).
+        - Daily close is above the daily SMA (bullish trend confirmation).
+
+    Exit Conditions:
+        - MAS crossover down: The spread between fast and slow SMAs crosses from positive to negative.
+
+    Parameters:
+        symbol (str): Trading pair symbol (e.g., "BTC/USDT").
+        initial_balance (float): Starting capital.
+        timeframes (list[str]): List of timeframes (must include "1h" and "1d").
+        start_backtest_index (int): Index to begin backtesting from.
+        fast (float): Period for fast SMA.
+        slow (float): Period for slow SMA.
+        rsi_period (float): Period for RSI.
+        rsi_threshold (float): RSI threshold for entry (oversold filter).
+        macd_fast (float): Fast EMA period for MACD.
+        macd_slow (float): Slow EMA period for MACD.
+        macd_signal (float): Signal line EMA period for MACD.
+        trend_sma_period (float): Daily SMA period used for bullish trend filter.
+    """
+
     def __init__(
         self,
         symbol: str,
@@ -34,11 +62,32 @@ class MASStrategy(Base):
         self.trend_sma_period = trend_sma_period
 
     def check_config(self) -> bool:
+        """
+        Validates that the fast period is less than the slow period for MAS,
+        and that MACD fast period is less than the MACD slow period.
+
+        Returns:
+            bool: True if configuration is valid, False otherwise.
+        """
         return self.fast < self.slow and self.macd_fast < self.macd_slow
 
     def compute_indicators(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-        """calculates the indicators used in buying and selling"""
+        (
+            """
+        Validates that the fast period is less than the slow period for MAS,
+        and that MACD fast period is less than the MACD slow period.
 
+        Returns:
+            bool: True if configuration is valid, False otherwise.
+        """
+            """
+        Validates that the fast period is less than the slow period for MAS,
+        and that MACD fast period is less than the MACD slow period.
+
+        Returns:
+            bool: True if configuration is valid, False otherwise.
+        """
+        )
         # get data
         df_1h = data["1h"]
         df_1d = data["1d"]
@@ -67,9 +116,23 @@ class MASStrategy(Base):
         return df_1h
 
     def entry_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
-        """Buy when the price is higher than the dema indicator and the fast tema
-        crosses the slow tema upwards."""
+        """
+        Determines whether to enter a position.
 
+        Conditions:
+            - No open position.
+            - MAS spread changes from negative to positive over last 3 candles.
+            - RSI is below threshold (potential oversold bounce).
+            - MACD > MACD signal (bullish momentum).
+            - Daily bullish trend (price > daily SMA).
+
+        Args:
+            df (pd.DataFrame): 1h OHLCV + indicator DataFrame.
+            index (int): Row index to evaluate.
+
+        Returns:
+            bool: True if entry conditions are met.
+        """
         row = df.iloc[index]
         prev = df.iloc[index - 1]
         prev2 = df.iloc[index - 2]
@@ -85,8 +148,19 @@ class MASStrategy(Base):
         )
 
     def exit_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
-        """Sell when the price is higher than the dema indicator and the fast tema
-        crosses the slow tema downwards"""
+        """
+        Determines whether to exit a position.
+
+        Conditions:
+            - MAS spread changes from positive to negative over last 3 candles.
+
+        Args:
+            df (pd.DataFrame): 1h OHLCV + indicator DataFrame.
+            index (int): Row index to evaluate.
+
+        Returns:
+            bool: True if exit conditions are met.
+        """
         row = df.iloc[index]
         prev = df.iloc[index - 1]
         prev2 = df.iloc[index - 2]
