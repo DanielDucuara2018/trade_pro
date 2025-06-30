@@ -1,0 +1,26 @@
+{
+    "strategy": {
+        "symbol": "BTCUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1h"],
+        "start_backtest_index": 1,
+        "rsi_period": 6,
+        "rsi_oversold": 28,
+        "rsi_overbought": 79,
+        "ema_period": 100,
+        "adx_period": 14,
+        "adx_treshold": 20
+    },
+    "optimization": {
+        "variables": {
+            "rsi_period": { "low": 5, "high": 30 },
+            "rsi_oversold": { "low": 0, "high": 30 },
+            "rsi_overbought": { "low": 70, "high": 100 },
+            "ema_period": { "low": 20, "high": 200 },
+            "adx_period": { "low": 7, "high": 30 },
+            "adx_treshold": { "low": 10, "high": 40 }
+        },
+        "score_method": "balance_consistency",
+        "n_trials": 1000
+    }
+}

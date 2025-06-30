@@ -1,0 +1,30 @@
+{
+    "strategy": {
+        "symbol": "BTCUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1h"],
+        "start_backtest_index": 1,
+        "rsi_period": 6,
+        "rsi_oversold": 28,
+        "rsi_overbought": 79,
+        "stoch_k_period": 14,
+        "stoch_d_period": 3,
+        "stoch_smooth_period": 3,
+        "stoch_oversold": 20,
+        "stoch_overbought": 80
+    },
+    "optimization": {
+        "variables": {
+            "rsi_period": { "low": 5, "high": 30 },
+            "rsi_oversold": { "low": 0, "high": 30 },
+            "rsi_overbought": { "low": 70, "high": 100 },
+            "stoch_k_period": { "low": 5, "high": 21 },
+            "stoch_d_period": { "low": 2, "high": 10 },
+            "stoch_smooth_period": { "low": 1, "high": 5 },
+            "stoch_oversold": { "low": 10, "high": 40 },
+            "stoch_overbought": { "low": 60, "high": 90 }
+        },
+        "score_method": "balance_consistency",
+        "n_trials": 1000
+    }
+}

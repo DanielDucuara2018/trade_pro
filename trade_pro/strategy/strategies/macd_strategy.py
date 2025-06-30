@@ -1,10 +1,10 @@
 import pandas as pd
 import pandas_ta as ta
 
-from trade_pro.strategy.base import Base
+from trade_pro.strategy.strategies.rsi_strategy import RSIStrategy
 
 
-class MACDStrategy(Base):
+class MACDStrategy(RSIStrategy):
     """
     A trading strategy combining MACD, RSI, EMA, and ADX indicators to identify trend-based
     entry and exit signals using 1-hour price data.
@@ -43,28 +43,31 @@ class MACDStrategy(Base):
         initial_balance: float,
         timeframes: list[str],
         start_backtest_index: int,
-        macd_fast: int,
-        macd_slow: int,
-        macd_signal: int,
         rsi_period: int,
-        rsi_threshold_entry: int,
-        rsi_threshold_exit: int,
+        rsi_oversold: int,
+        rsi_overbought: int,
         ema_period: int,
         adx_period: int,
         adx_treshold: int,
+        macd_fast: int,
+        macd_slow: int,
+        macd_signal: int,
     ):
         super().__init__(
-            symbol, initial_balance, timeframes, start_backtest_index=start_backtest_index
+            symbol,
+            initial_balance,
+            timeframes,
+            start_backtest_index,
+            rsi_period,
+            rsi_oversold,
+            rsi_overbought,
+            ema_period,
+            adx_period,
+            adx_treshold,
         )
         self.macd_fast = macd_fast
         self.macd_slow = macd_slow
         self.macd_signal = macd_signal
-        self.rsi_period = rsi_period
-        self.rsi_threshold_entry = rsi_threshold_entry
-        self.rsi_threshold_exit = rsi_threshold_exit
-        self.ema_period = ema_period
-        self.adx_period = adx_period
-        self.adx_treshold = adx_treshold
 
     def check_config(self) -> bool:
         """
@@ -73,7 +76,7 @@ class MACDStrategy(Base):
         Returns:
             bool: True if config is valid, else False.
         """
-        return self.macd_fast < self.macd_slow
+        return super().check_config() and self.macd_fast < self.macd_slow
 
     def compute_indicators(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
         """
@@ -86,7 +89,7 @@ class MACDStrategy(Base):
             pd.DataFrame: 1h DataFrame with added indicator columns.
         """
         # get data
-        df_1h = data["1h"]
+        df_1h = super().compute_indicators(data)
 
         # --- MACD ---
         macd = ta.macd(df_1h["close"], self.macd_fast, self.macd_slow, self.macd_signal)
@@ -94,16 +97,6 @@ class MACDStrategy(Base):
             macd[f"MACD_{self.macd_fast}_{self.macd_slow}_{self.macd_signal}"],
             macd[f"MACDs_{self.macd_fast}_{self.macd_slow}_{self.macd_signal}"],
         )
-        # --- RSI ---
-        df_1h["RSI"] = ta.rsi(df_1h["close"], length=self.rsi_period)
-
-        # --- EMA ---
-        df_1h["EMA"] = ta.ema(df_1h["close"], length=self.ema_period)
-
-        # --- ADX ---
-        df_1h["ADX"] = ta.adx(df_1h["high"], df_1h["low"], df_1h["close"], length=self.adx_period)[
-            f"ADX_{self.adx_period}"
-        ]
 
         return df_1h
 
@@ -129,10 +122,7 @@ class MACDStrategy(Base):
         prev = df.iloc[index - 1]
 
         return (
-            not self.position
-            and row["close"] > row["EMA"]  # Trend filter
-            and row["ADX"] > self.adx_treshold  # Trend strength
-            and prev["RSI"] < self.rsi_threshold_entry < row["RSI"]  # RSI crossover up
+            super().entry_condition(df, index=index)
             and prev["MACD"] < prev["MACD_SIGNAL"]
             and row["MACD"] > row["MACD_SIGNAL"]  # MACD crossover
         )
@@ -156,7 +146,7 @@ class MACDStrategy(Base):
         prev = df.iloc[index - 1]
 
         return self.position and (
-            row["RSI"] < self.rsi_threshold_exit < prev["RSI"]
+            row["RSI"] < self.rsi_overbought < prev["RSI"]
             or prev["MACD"] > prev["MACD_SIGNAL"]
             and row["MACD"] < row["MACD_SIGNAL"]
         )
