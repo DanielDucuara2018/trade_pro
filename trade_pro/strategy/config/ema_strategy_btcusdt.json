@@ -4,9 +4,9 @@
         "initial_balance": 2000,
         "timeframes": ["1h"],
         "start_backtest_index": 1,
-        "tema_fast": 53,
-        "tema_slow": 127,
-        "dema_period": 199
+        "tema_fast": 47,
+        "tema_slow": 125,
+        "dema_period": 188
     },
     "optimization": {
         "variables":{

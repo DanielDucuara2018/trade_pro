@@ -26,7 +26,7 @@
             "trend_sma_period" : {"low": 10, "high": 300},
             "volume_ma_period": {"low": 5, "high": 50}
         },
-        "score_method": "risk_adjusted",
+        "score_method": "",
         "n_trials": 1000
     }
 }

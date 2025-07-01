@@ -5,11 +5,11 @@
         "timeframes": ["1h"],
         "start_backtest_index": 1,
         "rsi_period": 6,
-        "rsi_oversold": 28,
-        "rsi_overbought": 79,
-        "ema_period": 100,
-        "adx_period": 14,
-        "adx_treshold": 20
+        "rsi_oversold": 15,
+        "rsi_overbought": 87,
+        "ema_period": 113,
+        "adx_period": 16,
+        "adx_treshold": 28
     },
     "optimization": {
         "variables": {

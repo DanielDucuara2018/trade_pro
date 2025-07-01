@@ -4,6 +4,7 @@ import pandas_ta as ta
 from trade_pro.strategy.base import Base
 
 
+# TODO check if adding a trend following indicator would be necessary
 class StochasticStrategy(Base):
     """
     A trading strategy based on Stochastic Oscillator and RSI indicators.
@@ -27,7 +28,7 @@ class StochasticStrategy(Base):
         start_backtest_index (int): Index to start backtesting from.
         rsi_period (int): Period for RSI calculation.
         rsi_oversold (int): RSI value considered oversold.
-        rsi_overbought (int): RSI value considered overbought.
+        # rsi_overbought (int): RSI value considered overbought.
         stoch_k_period (int): %K period for Stochastic Oscillator.
         stoch_d_period (int): %D period for Stochastic Oscillator.
         stoch_oversold (int): Threshold for oversold in Stochastic.
@@ -43,7 +44,6 @@ class StochasticStrategy(Base):
         start_backtest_index: int,
         rsi_period: int,
         rsi_oversold: int,
-        rsi_overbought: int,
         stoch_k_period: int,
         stoch_d_period: int,
         stoch_oversold: int,
@@ -55,7 +55,6 @@ class StochasticStrategy(Base):
         )
         self.rsi_period = rsi_period
         self.rsi_oversold = rsi_oversold
-        self.rsi_overbought = rsi_overbought
         self.stoch_k_period = stoch_k_period
         self.stoch_d_period = stoch_d_period
         self.stoch_oversold = stoch_oversold
@@ -71,7 +70,6 @@ class StochasticStrategy(Base):
         """
         return (
             0 <= self.rsi_oversold <= 100
-            and 0 <= self.rsi_overbought <= 100
             and 0 <= self.stoch_oversold <= 100
             and 0 <= self.stoch_overbought <= 100
         )
@@ -99,8 +97,8 @@ class StochasticStrategy(Base):
             smooth_k=self.stoch_smooth_period,
         )
 
-        k_col = f"STOCHk_{self.stoch_k_period}_{self.stoch_smooth_period}_{self.stoch_d_period}"
-        d_col = f"STOCHd_{self.stoch_k_period}_{self.stoch_smooth_period}_{self.stoch_d_period}"
+        k_col = f"STOCHk_{self.stoch_k_period}_{self.stoch_d_period}_{self.stoch_smooth_period}"
+        d_col = f"STOCHd_{self.stoch_k_period}_{self.stoch_d_period}_{self.stoch_smooth_period}"
 
         df_1h["STOCH_K"] = stoch[k_col]
         df_1h["STOCH_D"] = stoch[d_col]
@@ -121,12 +119,13 @@ class StochasticStrategy(Base):
         row = df.iloc[index]
         prev = df.iloc[index - 1]
 
-        return (
-            not self.position
-            and row["STOCH_K"] < self.stoch_oversold
-            and prev["STOCH_K"] < prev["STOCH_D"]
-            and row["STOCH_K"] > row["STOCH_D"]
-            and prev["RSI"] < self.rsi_oversold < row["RSI"]
+        return not self.position and (
+            (
+                row["STOCH_K"] < self.stoch_oversold
+                and prev["STOCH_K"] < prev["STOCH_D"]
+                and row["STOCH_K"] > row["STOCH_D"]
+            )
+            or prev["RSI"] < self.rsi_oversold < row["RSI"]
         )
 
     def exit_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
@@ -148,6 +147,4 @@ class StochasticStrategy(Base):
             and row["STOCH_K"] > self.stoch_overbought
             and prev["STOCH_K"] > prev["STOCH_D"]
             and row["STOCH_K"] < row["STOCH_D"]
-            and prev["RSI"] > self.rsi_overbought
-            and row["RSI"] < self.rsi_overbought
         )

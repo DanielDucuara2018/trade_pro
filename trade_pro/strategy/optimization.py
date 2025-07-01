@@ -36,11 +36,49 @@ def score_risk_adjusted(strategy: Base) -> float:
     ) + (strategy.win_rate * 100 if len(strategy.trades) > 5 else 0)
 
 
+def score_risk_reward(strategy: Base, min_trades: int = 10) -> float:
+    """
+    Calculates an optimization score based on the ratio of average win percentage
+    to average loss percentage, optionally weighted by win rate and trade count.
+
+    Args:
+        trades (list[dict]): List of trade dictionaries with at least a 'pnl_pct' key.
+                             Example: [{"pnl_pct": 3.2}, {"pnl_pct": -1.5}, ...]
+        min_trades (int): Minimum number of trades required to consider the score valid.
+
+    Returns:
+        float: Risk-reward score. Returns -1.0 if not enough trades or no valid wins/losses.
+    """
+    trades = strategy.trades
+    if len(trades) < min_trades:
+        return -1.0  # Penalize unrepresentative samples
+
+    win_pcts = [t["return_pct"] for t in trades if t["return_pct"] > 0]
+    loss_pcts = [
+        -t["return_pct"] for t in trades if t["return_pct"] < 0
+    ]  # Convert to positive for averaging
+
+    if not win_pcts or not loss_pcts:
+        return -1.0  # No valid win or loss data
+
+    avg_win = sum(win_pcts) / len(win_pcts)
+    avg_loss = sum(loss_pcts) / len(loss_pcts)
+    win_rate = len(win_pcts) / len(trades)
+
+    # Core score: reward-to-risk ratio * win rate
+    score = (avg_win / avg_loss) * win_rate
+
+    # Optional: penalize low trade counts (< min_trades)
+    trade_penalty = min(1.0, len(trades) / min_trades)
+    return score * trade_penalty
+
+
 # --- Score selector mapping ---
 SCORE_METHODS: dict[str, Callable[[Base], float]] = {
     "basic": score_basic,
     "balance_consistency": score_reward_balance_and_consistency,
     "risk_adjusted": score_risk_adjusted,
+    "risk_reward": score_risk_reward,
 }
 
 

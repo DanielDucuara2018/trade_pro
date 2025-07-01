@@ -1,6 +1,6 @@
 {
     "strategy": {
-        "symbol": "BTCUSDT",
+        "symbol": "ETHUSDT",
         "initial_balance": 2000,
         "timeframes": ["1h"],
         "start_backtest_index": 1,

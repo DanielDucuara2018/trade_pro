@@ -4,9 +4,9 @@
         "initial_balance": 2000,
         "timeframes": ["1h"],
         "start_backtest_index": 1,
-        "std_window": 48,
-        "band_upper_multiplier": 0.5,
-        "band_lower_multiplier": 2.1
+        "std_window": 26,
+        "band_upper_multiplier": 0.7,
+        "band_lower_multiplier": 1.4
     },
     "optimization": {
         "variables":{

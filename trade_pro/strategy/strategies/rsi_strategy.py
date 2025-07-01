@@ -101,9 +101,9 @@ class RSIStrategy(Base):
 
         return (
             not self.position
+            and prev["RSI"] < self.rsi_oversold < row["RSI"]
             and row["close"] > row["EMA"]
             and row["ADX"] > self.adx_treshold
-            and prev["RSI"] < self.rsi_oversold < row["RSI"]
         )
 
     def exit_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
