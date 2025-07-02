@@ -92,6 +92,8 @@ def select_suggest_type(trial: Trial, param: str, **kwargs) -> int | float:
 
 
 def run_optimization(cls: Type[Base], config: dict[str, Any]) -> None:
+    OPTI_DIR.mkdir(parents=True, exist_ok=True)
+
     symbol = config["strategy"]["symbol"]
     optimization_config: dict[str, Any] = config.get("optimization")
 

@@ -6,7 +6,15 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from trade_pro.strategy.utils import fetch_candles, get_data, update_data
+from trade_pro.strategy.utils import (
+    fetch_candles,
+    get_data,
+    plot_equity_curve,
+    plot_price_chart,
+    update_data,
+    wait_for_next_candle,
+)
+from trade_pro.telegram.runner import TelegramBot
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +62,7 @@ class Base:
         self.win_rate = 0
         self.trades = []
         self.mode = None
+        self.telegram_bot = None
 
     @abstractmethod
     def check_config(self) -> bool:
@@ -117,6 +126,7 @@ class Base:
         if self.mode == Mode.BACKTEST or self.mode == Mode.OPTIMIZATION:
             self.backtest(data)
         elif self.mode == Mode.LIVE:
+            self.telegram_bot = TelegramBot(bot_token="your_token", chat_id="your_chat_id")
             self.live(data, histo_data)
 
     def live(self, data: pd.DataFrame, histo_data: dict[str, pd.DataFrame]) -> None:
@@ -138,7 +148,7 @@ class Base:
                 entry_price, entry_time, units = self.execute_entry(row)
             elif self.exit_condition(data, index=self.start_live_index):
                 self.execute_exit(row, entry_price, entry_time, units)
-            # wait_for_next_candle(self.main_timeframe)
+            wait_for_next_candle(self.timeframes[0])
 
     def backtest(self, data: pd.DataFrame) -> None:
         """run back testing strategy"""
@@ -154,7 +164,7 @@ class Base:
 
         if len(self.trades) > 0:
             self.resume_backtest(self.trades)
-        # self.generate_chart(close_prices, close_times)
+            self.generate_chart(self.symbol, data, self.trades)
 
     def execute_entry(
         self,
@@ -168,7 +178,7 @@ class Base:
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
         if self.mode == Mode.LIVE:
-            self.bot.send_telegram_message(msg)
+            self.telegram_bot.send_telegram_message(msg)
         return entry_price, entry_time, units
 
     def execute_exit(
@@ -203,7 +213,7 @@ class Base:
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
         if self.mode == Mode.LIVE:
-            self.bot.send_telegram_message(msg)
+            self.telegram_bot.send_telegram_message(msg)
 
     def resume_backtest(self, trades: list[dict[str, Any]]):
         trade_df = pd.DataFrame(trades)
@@ -242,3 +252,12 @@ class Base:
             logger.info(f"Max Drawdown: ${self.max_drawdown:.2f}")
             logger.info(f"Total PnL: ${total_pnl:.2f}")
             logger.info(f"Final Balance: ${(total_pnl + self.initial_balance):.2f}")
+
+    def generate_chart(
+        self,
+        symbol: str,
+        df: pd.DataFrame,
+        trades: list[dict[str, Any]],
+    ):
+        plot_price_chart(symbol, self.__class__.__name__, df, trades)
+        plot_equity_curve(symbol, self.__class__.__name__, trades)
