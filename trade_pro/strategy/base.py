@@ -148,7 +148,7 @@ class Base:
                 entry_price, entry_time, units = self.execute_entry(row)
             elif self.exit_condition(data, index=self.start_live_index):
                 self.execute_exit(row, entry_price, entry_time, units)
-            wait_for_next_candle(self.timeframes[0])
+            wait_for_next_candle(timeframe=self.timeframes[0])
 
     def backtest(self, data: pd.DataFrame) -> None:
         """run back testing strategy"""
