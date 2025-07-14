@@ -1,0 +1,23 @@
+{
+    "strategy":{
+        "symbol": "BTCUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1h", "1d"],
+        "start_backtest_index": 2,
+        "fast": 19, "slow": 108, "rsi_period": 30, "rsi_threshold": 70, "macd_fast": 16, "macd_slow": 42, "macd_signal": 15, "trend_sma_period": 13
+    } ,
+    "optimization": {
+        "variables":{
+            "fast": {"low": 5, "high": 80},
+            "slow": {"low": 30, "high": 250},
+            "rsi_period" : {"low": 5, "high": 30},
+            "rsi_threshold" : {"low": 30, "high": 70},
+            "macd_fast" : {"low": 5, "high": 20},
+            "macd_slow" : {"low": 15, "high": 50},
+            "macd_signal" : {"low": 5, "high": 20},
+            "trend_sma_period" : {"low": 5, "high": 30}
+        },
+        "score_method": "balance_consistency",
+        "n_trials": 1000
+    }
+}

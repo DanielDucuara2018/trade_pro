@@ -58,9 +58,10 @@ class Base:
 
         self.balance = self.initial_balance
         self.max_drawdown = 0
+        self.max_balance_seen = 0
         self.profit_factor = 0
         self.win_rate = 0
-        self.trades = []
+        self.trades: list[dict[str, int | float]] = []
         self.mode = None
         self.telegram_bot = None
 
@@ -191,7 +192,7 @@ class Base:
         exit_price = row["close"] * (1 - self.slippage - self.commission)
         pnl = (exit_price - entry_price) * units
         exit_time = row.name
-        return_pct = pnl / (units * entry_price) * 100
+        return_pct = pnl / (units * entry_price)
         self.trades.append(
             {
                 "entry_time": entry_time,
@@ -208,7 +209,7 @@ class Base:
         self.position = False
         msg = (
             f"📉 [LONG EXIT] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}."
-            f"PnL: ${pnl:.2f} | Return: {return_pct:.2f}%"
+            f"PnL: ${pnl:.2f} | Return: {(return_pct * 100):.2f}%"
         )
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
@@ -225,12 +226,14 @@ class Base:
         total_wins = wins["pnl"].sum()
         total_losses = abs(losses["pnl"].sum())
         value_weighted_win_rate = (
-            total_wins / (total_wins + total_losses) * 100 if (total_wins + total_losses) > 0 else 0
+            total_wins / (total_wins + total_losses) if (total_wins + total_losses) > 0 else 0
         )
-        self.win_rate = len(wins) / len(trade_df) * 100
+        self.win_rate = len(wins) / len(trade_df)
         self.profit_factor = total_wins / total_losses if total_losses != 0 else float("inf")
         self.max_drawdown = (trade_df["pnl"].cumsum().cummax() - trade_df["pnl"].cumsum()).max()
         total_pnl = trade_df["pnl"].sum()
+        cumulative_balance = self.initial_balance + trade_df["pnl"].cumsum()
+        self.max_balance_seen = cumulative_balance.max()
         sharpe_like = float("nan")
         if len(returns) > 0:
             sharpe_like = np.mean(returns) / (np.std(returns) + 1e-9)  # avoid div by zero
@@ -245,13 +248,14 @@ class Base:
             logger.info(f"Lose Trades: {len(losses)}")
             logger.info(f"Max win: ${wins['pnl'].max():.2f}")
             logger.info(f"Max lose: ${losses['pnl'].min():.2f}")
-            logger.info(f"Win Rate (Count-Based): {self.win_rate:.2f}%")
-            logger.info(f"Win Rate (PnL-Weighted): {value_weighted_win_rate:.2f}%")
+            logger.info(f"Win Rate (Count-Based): {(self.win_rate * 100):.2f}%")
+            logger.info(f"Win Rate (PnL-Weighted): {(value_weighted_win_rate * 100):.2f}%")
             logger.info(f"Profit Factor: {self.profit_factor:.2f}")
             logger.info(f"Sharpe-like Ratio (return_pct/std): {sharpe_like:.2f}")
             logger.info(f"Max Drawdown: ${self.max_drawdown:.2f}")
+            logger.info(f"Max Balance Seen: ${self.max_balance_seen:.2f}")
             logger.info(f"Total PnL: ${total_pnl:.2f}")
-            logger.info(f"Final Balance: ${(total_pnl + self.initial_balance):.2f}")
+            logger.info(f"Final Balance: ${(self.balance):.2f}")
 
     def generate_chart(
         self,
@@ -259,5 +263,6 @@ class Base:
         df: pd.DataFrame,
         trades: list[dict[str, Any]],
     ):
-        plot_price_chart(symbol, self.__class__.__name__, df, trades)
-        plot_equity_curve(symbol, self.__class__.__name__, trades)
+        if self.mode == Mode.BACKTEST:
+            plot_price_chart(symbol, self.__class__.__name__, df, trades)
+            plot_equity_curve(symbol, self.__class__.__name__, trades)
