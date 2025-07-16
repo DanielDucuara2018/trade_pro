@@ -1,0 +1,17 @@
+{
+    "strategy":{
+        "symbol": "BTCUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1d"],
+        "start_backtest_index": 2,
+        "pi_sma_fast": 111,
+        "pi_sma_slow": 350,
+        "ema_fast": 150,
+        "sma_slow": 471
+    },
+    "optimization": {
+        "variables":{},
+        "score_method": "",
+        "n_trials": 1000
+    }
+}
