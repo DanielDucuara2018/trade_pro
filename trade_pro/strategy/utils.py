@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -16,9 +17,20 @@ CONFIG_DIR = CURRENT_DIR.joinpath("config")
 
 exchange = ccxt.binance()
 
+logger = logging.getLogger(__name__)
 
-def fetch_candles(symbol: str, timeframe: str, limit=10) -> pd.DataFrame:
-    ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+
+def fetch_candles(symbol: str, timeframe: str, limit=10, retry: int = 5) -> pd.DataFrame:
+    time.sleep(10)
+
+    try:
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+    except ccxt.RequestTimeout as e:
+        logger.warning("Error fetching candle data")
+        if retry <= 0:
+            raise e
+        return fetch_candles(symbol, timeframe, limit, retry - 1)
+
     df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     df.set_index("timestamp", inplace=True)
