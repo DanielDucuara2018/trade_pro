@@ -13,5 +13,5 @@ nohup python trade_pro/main.py run --mode live --name MASStrategy --config mas_s
 # nohup python trade_pro/main.py run --mode live --name MASStrategy --config mas_strategy_btcusdt_3 > mas_strategy_btcusdt_3 2>&1 &
 nohup python trade_pro/main.py run --mode live --name MASStrategy --config mas_strategy_ethusdt > mas_strategy_ethusdt 2>&1 &
 nohup python trade_pro/main.py run --mode live --name VolumeMASStrategy --config volume_mas_strategy_ethusdt > volume_mas_strategy_ethusdt 2>&1 &
-# nohup python trade_pro/main.py run --mode backtest --name EmaAtrReversalStrategy --config ema_atr_reversal_strategy_btcusdt > ema_atr_reversal_strategy_btcusdt 2>&1 &
-nohup python trade_pro/main.py run --mode backtest --name EmaAtrReversalStrategy --config ema_atr_reversal_strategy_btcusdt_2 > ema_atr_reversal_strategy_btcusdt_2 2>&1 &
+# nohup python trade_pro/main.py run --mode live --name EmaAtrReversalStrategy --config ema_atr_reversal_strategy_btcusdt > ema_atr_reversal_strategy_btcusdt 2>&1 &
+nohup python trade_pro/main.py run --mode live --name EmaAtrReversalStrategy --config ema_atr_reversal_strategy_btcusdt_2 > ema_atr_reversal_strategy_btcusdt_2 2>&1 &
