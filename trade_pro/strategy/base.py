@@ -128,6 +128,9 @@ class Base:
             self.backtest(data)
         elif self.mode == Mode.LIVE:
             self.telegram_bot = TelegramBot(bot_token="your_token", chat_id="your_chat_id")
+            self.telegram_bot.send_telegram_message(
+                f"[{self.__class__.__name__}] Starting live trade"
+            )
             self.live(data, histo_data)
 
     def live(self, data: pd.DataFrame, histo_data: dict[str, pd.DataFrame]) -> None:
@@ -175,7 +178,9 @@ class Base:
         units = self.balance / entry_price
         self.position = True
         entry_time = row.name
-        msg = f"📈 [ENTRY] {self.symbol} {entry_time} @ {entry_price:.2f}"
+        msg = (
+            f"📈 [ENTRY] [{self.__class__.__name__}] {self.symbol} {entry_time} @ {entry_price:.2f}"
+        )
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
         if self.mode == Mode.LIVE:
@@ -208,7 +213,7 @@ class Base:
         self.balance += pnl
         self.position = False
         msg = (
-            f"📉 [LONG EXIT] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}."
+            f"📉 [LONG EXIT] [{self.__class__.__name__}] {self.symbol} Time: {exit_time} Price: ${exit_price:.2f}."
             f"PnL: ${pnl:.2f} | Return: {(return_pct * 100):.2f}%"
         )
         if self.mode == Mode.BACKTEST:

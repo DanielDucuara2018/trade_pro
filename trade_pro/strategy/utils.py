@@ -1,6 +1,7 @@
 import datetime
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -46,9 +47,34 @@ def update_data(df: pd.DataFrame, df_new: pd.DataFrame) -> pd.DataFrame:
 
 def wait_for_next_candle(*, timeframe: str = "1h") -> None:
     now = datetime.datetime.now()
-    if timeframe == "1h":
-        wait_seconds = 3600 - (now.minute * 60 + now.second)
-    time.sleep(wait_seconds + 2)  # buffer time
+
+    # Parse timeframe like "1m", "5m", "1h", "4h", "1d"
+    match = re.fullmatch(r"(\d+)([mhd])", timeframe)
+    if not match:
+        raise ValueError(f"Unsupported timeframe format: {timeframe}")
+
+    value, unit = int(match.group(1)), match.group(2)
+
+    # Convert timeframe to total seconds
+    if unit == "m":
+        interval_seconds = value * 60
+    elif unit == "h":
+        interval_seconds = value * 3600
+    elif unit == "d":
+        interval_seconds = value * 86400
+    else:
+        raise ValueError(f"Unsupported timeframe unit: {unit}")
+
+    # Compute seconds since midnight
+    seconds_since_midnight = now.hour * 3600 + now.minute * 60 + now.second
+
+    # Compute time until next aligned candle
+    elapsed = seconds_since_midnight % interval_seconds
+    wait_seconds = interval_seconds - elapsed
+
+    # Wait with buffer
+    logger.info("Wating %s until next data fecth", wait_seconds)
+    time.sleep(wait_seconds + 2)
 
 
 def get_data(symbol: str, timeframe: str) -> pd.DataFrame:
