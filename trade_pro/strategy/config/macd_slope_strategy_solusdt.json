@@ -4,9 +4,9 @@
         "initial_balance": 2000,
         "timeframes": ["1d"],
         "start_backtest_index": 2,
-        "macd_fast": 15,
-        "macd_slow": 23,
-        "macd_signal": 14
+        "macd_fast": 19,
+        "macd_slow": 21,
+        "macd_signal": 12
     },
     "optimization": {
         "variables":{

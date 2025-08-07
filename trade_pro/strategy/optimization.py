@@ -40,11 +40,15 @@ def score_basic(strategy: Base) -> float:
         return -float("inf")
 
     drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
+    profit_factor_score = np.log1p(strategy.profit_factor) * 500
+    trade_penalty = max(0, (len(strategy.trades) - 100) * 5)  # Penalize >100 trades
+
     return (
         (strategy.balance - strategy.initial_balance)
-        + (strategy.profit_factor * 500)
+        + profit_factor_score
         + (strategy.win_rate * 1000)
         - (drawdown_pct * 2000)
+        - trade_penalty
     )
 
 
@@ -105,10 +109,18 @@ def score_risk_adjusted(strategy: Base) -> float:
     if len(strategy.trades) < 2 or strategy.balance <= 0:
         return -float("inf")
 
+    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    std_return = np.std(returns) if returns else 1e-6
+    mean_return = np.mean(returns) if returns else 0
     drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
-    return (strategy.balance - strategy.initial_balance) / (
-        1 + drawdown_pct + 1 / (1 + strategy.profit_factor)
-    ) + (strategy.win_rate * 100 if len(strategy.trades) > 5 else 0)
+
+    sharpe_like = mean_return / std_return if std_return > 0 else 0
+
+    return (
+        sharpe_like * 1000
+        - drawdown_pct * 100
+        + (strategy.win_rate * 100 if len(strategy.trades) > 5 else 0)
+    )
 
 
 def score_risk_reward(strategy: Base, min_trades: int = 10) -> float:
@@ -127,25 +139,19 @@ def score_risk_reward(strategy: Base, min_trades: int = 10) -> float:
     # TODO improve this score
     trades = strategy.trades
     if len(trades) < min_trades:
-        return -1.0  # Penalize unrepresentative samples
+        return -1.0
 
     win_pcts = [t["return_pct"] for t in trades if t["return_pct"] > 0]
-    loss_pcts = [
-        -t["return_pct"] for t in trades if t["return_pct"] < 0
-    ]  # Convert to positive for averaging
+    loss_pcts = [-t["return_pct"] for t in trades if t["return_pct"] < 0]
 
     if not win_pcts or not loss_pcts:
-        return -1.0  # No valid win or loss data
+        return -1.0
 
-    avg_win = sum(win_pcts) / len(win_pcts)
-    avg_loss = sum(loss_pcts) / len(loss_pcts)
+    avg_win = np.median(win_pcts)
+    avg_loss = np.median(loss_pcts)
     win_rate = len(win_pcts) / len(trades)
-
-    # Core score: reward-to-risk ratio * win rate
-    score = (avg_win / avg_loss) * win_rate
-
-    # Optional: penalize low trade counts (< min_trades)
     trade_penalty = min(1.0, len(trades) / min_trades)
+    score = (avg_win / avg_loss) * win_rate
     return score * trade_penalty
 
 
@@ -187,16 +193,61 @@ def score_geometric_mean(strategy: Base) -> float:
 
     multipliers = [1 + t["return_pct"] for t in strategy.trades if "return_pct" in t]
     if any(m <= 0 for m in multipliers):
-        return -float("inf")  # Avoid math domain error or non-compounding losses
+        return -float("inf")
 
     geo_mean = np.prod(multipliers) ** (1 / len(multipliers)) - 1
     drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
+    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    skewness = (np.mean(returns) - np.median(returns)) if returns else 0
 
     return (
-        geo_mean * 1_000  # Reward geometric compounding
-        - drawdown_pct * 100  # Heavily penalize large drawdowns
-        + (len(strategy.trades) if geo_mean > 0 else 0)  # Reward consistency only if profitable
+        geo_mean * 1_000
+        - drawdown_pct * 100
+        + (len(strategy.trades) if geo_mean > 0 else 0)
+        - (abs(skewness) * 100)  # Penalize negative skew
     )
+
+
+def score_sharpe(strategy: Base) -> float:
+    """
+    Sharpe ratio-based score.
+    """
+    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    if len(returns) < 2 or strategy.balance <= 0:
+        return -float("inf")
+    mean_return = np.mean(returns)
+    std_return = np.std(returns)
+    if std_return == 0:
+        return -float("inf")
+    drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
+    return (mean_return / std_return) * 1000 - drawdown_pct * 100
+
+
+def score_sortino(strategy: Base) -> float:
+    """
+    Sortino ratio-based score.
+    """
+    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    if len(returns) < 2 or strategy.balance <= 0:
+        return -float("inf")
+    downside_returns = [r for r in returns if r < 0]
+    std_downside = np.std(downside_returns) if downside_returns else 1e-6
+    mean_return = np.mean(returns)
+    drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
+    return (mean_return / std_downside) * 1000 - drawdown_pct * 100
+
+
+def score_consistency(strategy: Base) -> float:
+    """
+    Rewards low volatility and high win rate.
+    """
+    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    if len(returns) < 2 or strategy.balance <= 0:
+        return -float("inf")
+    std_return = np.std(returns)
+    win_rate = strategy.win_rate
+    drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
+    return win_rate * 1000 - std_return * 500 - drawdown_pct * 100
 
 
 # --- Score selector mapping ---
@@ -206,6 +257,9 @@ SCORE_METHODS: dict[str, Callable[[Base], float]] = {
     "risk_adjusted": score_risk_adjusted,
     "risk_reward": score_risk_reward,
     "geometric_mean": score_geometric_mean,
+    "sharpe": score_sharpe,
+    "sortino": score_sortino,
+    "consistency": score_consistency,
 }
 
 
@@ -238,7 +292,7 @@ def run_optimization(cls: Type[Base], config: dict[str, Any]) -> None:
         raise ValueError(f"Unknown scoring method: '{score_method_name}'")
 
     n_trials = optimization_config.get("n_trials", 1000)
-    n_jobs = optimization_config.get("n_trials", -1)
+    n_jobs = optimization_config.get("n_jobs", -1)
 
     def objective(trial: Trial) -> float:
         optimization_values = {

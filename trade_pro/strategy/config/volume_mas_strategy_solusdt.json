@@ -4,15 +4,15 @@
         "initial_balance": 2000,
         "timeframes": ["1h", "1d"],
         "start_backtest_index": 2,
-        "fast": 9,
-        "slow": 77,
+        "fast": 5,
+        "slow": 88,
         "rsi_period": 28,
-        "rsi_threshold": 67,
-        "macd_fast": 19,
-        "macd_slow": 44,
-        "macd_signal": 7,
-        "trend_sma_period": 10,
-        "volume_ma_period": 13
+        "rsi_threshold": 68,
+        "macd_fast": 14,
+        "macd_slow": 36,
+        "macd_signal": 10,
+        "trend_sma_period": 21,
+        "volume_ma_period": 37
     },
     "optimization": {
         "variables":{
@@ -26,7 +26,8 @@
             "trend_sma_period" : {"low": 10, "high": 300},
             "volume_ma_period": {"low": 5, "high": 50}
         },
-        "score_method": "",
-        "n_trials": 1000
+        "score_method": "balance_consistency",
+        "n_trials": 1000,
+        "n_jobs": 4
     }
 }

@@ -151,37 +151,37 @@ Final Balance: $275063.50
 ### Based on volume_mas_strategy_ethusdt
 
 ```python
-Total Trades: 190
-Win Trades: 76
-Lose Trades: 114
-Max win: $26225.97
-Max lose: $-3818.32
-Win Rate (Count-Based): 40.00%
-Win Rate (PnL-Weighted): 68.26%
-Profit Factor: 2.15
-Sharpe-like Ratio (return_pct/std): 0.24
-Max Drawdown: $14923.33
-Max Balance Seen: $109736.48
-Total PnL: $106178.72
-Final Balance: $108178.72
+Total Trades: 178
+Win Trades: 72
+Lose Trades: 106
+Max win: $391490.33
+Max lose: $-54215.69
+Win Rate (Count-Based): 40.45%
+Win Rate (PnL-Weighted): 73.96%
+Profit Factor: 2.84
+Sharpe-like Ratio (return_pct/std): 0.34
+Max Drawdown: $165586.11
+Max Balance Seen: $1493757.28
+Total PnL: $1345196.73
+Final Balance: $1347196.73
 ```
 
 ### volume_mas_strategy_solusdt
 
 ```python
-Total Trades: 118
-Win Trades: 55
-Lose Trades: 63
-Max win: $17714.94
-Max lose: $-5292.39
-Win Rate (Count-Based): 46.61%
-Win Rate (PnL-Weighted): 69.61%
-Profit Factor: 2.29
-Sharpe-like Ratio (return_pct/std): 0.31
-Max Drawdown: $12479.19
-Max Balance Seen: $82735.44
-Total PnL: $75045.70
-Final Balance: $77045.70
+Total Trades: 122
+Win Trades: 57
+Lose Trades: 65
+Max win: $130311.08
+Max lose: $-71553.46
+Win Rate (Count-Based): 46.72%
+Win Rate (PnL-Weighted): 72.78%
+Profit Factor: 2.67
+Sharpe-like Ratio (return_pct/std): 0.34
+Max Drawdown: $106508.87
+Max Balance Seen: $973196.43
+Total PnL: $971196.43
+Final Balance: $973196.43
 ```
 
 ## EMA strategy
@@ -266,18 +266,36 @@ Final Balance: $125603.43
 
 ```python
 Total Trades: 40
-Win Trades: 19
-Lose Trades: 21
-Max win: $83361.33
-Max lose: $-11351.40
-Win Rate (Count-Based): 47.50%
-Win Rate (PnL-Weighted): 82.56%
-Profit Factor: 4.73
+Win Trades: 20
+Lose Trades: 20
+Max win: $107728.82
+Max lose: $-19073.16
+Win Rate (Count-Based): 50.00%
+Win Rate (PnL-Weighted): 79.79%
+Profit Factor: 3.95
 Sharpe-like Ratio (return_pct/std): 0.47
-Max Drawdown: $37936.01
-Max Balance Seen: $321354.56
-Total PnL: $319354.56
-Final Balance: $321354.56
+Max Drawdown: $55560.58
+Max Balance Seen: $347025.31
+Total PnL: $345025.31
+Final Balance: $347025.31
+```
+
+### macd_slope_strategy_linkusdt
+
+```python
+Total Trades: 123
+Win Trades: 57
+Lose Trades: 66
+Max win: $8938.56
+Max lose: $-8839.36
+Win Rate (Count-Based): 46.34%
+Win Rate (PnL-Weighted): 60.29%
+Profit Factor: 1.52
+Sharpe-like Ratio (return_pct/std): 0.24
+Max Drawdown: $16944.49
+Max Balance Seen: $55474.59
+Total PnL: $42111.23
+Final Balance: $44111.23
 ```
 
 # 📊 Summary Table
@@ -286,16 +304,16 @@ Final Balance: $321354.56
 | ------------------------------- | ------ | ----- | --------- | ------------- | ----------- | ------------ | ---------------------------- |
 | **macd_slope_strategy_solusdt** | 40     | 47.5% | 319,355   | 4.73          | 37.9k       | 0.47         | ⭐️ High Edge, Moderate Risk |
 | **stochastic_strategy_btcusdt** | 11     | 63.6% | 160,405   | 38.22         | 1.6k        | 0.61         | ⭐️ High Edge, Low Freq      |
-| **volume_mas_strategy_solusdt** | 118    | 46.6% | 75,046    | 2.29          | 12.5k       | 0.31         | ✅ Strong, Reliable          |
+| **volume_mas_strategy_solusdt** | 122    | 46.7% | 971,196   | 2.67          | 106.5k      | 0.34         | ⚠️ Risky, High Reward        |
 | **mas_strategy_btcusdt_2**      | 129    | 53.5% | 48,863    | 3.41          | 2.5k        | 0.40         | ✅ Very Solid                |
 | **volume_mas_strategy_btcusdt** | 179    | 46.9% | 273,063   | 3.30          | 13k         | 0.40         | ✅ Very Solid                |
 | **mas_strategy_btcusdt_4**      | 140    | 51.4% | 45,503    | 2.76          | 4.9k        | 0.36         | ✅ Solid                     |
 | **mas_strategy_ethusdt_2**      | 111    | 51.4% | 35,301    | 2.19          | 7k          | 0.35         | ✅ Solid                     |
 | **macd_slope_strategy_ethusdt** | 66     | 47.0% | 123,603   | 2.11          | 26.2k       | 0.38         | ✅ Good, Risky               |
-| **macd_slope_strategy_btcusdt** | 73     | 43.0% | 44,190    | 2.58          | 3.9k        | 0.29         | ✅ Strong, Low Risk          |
-| **mas_strategy_btcusdt**        | 302    | 45.0% | 623,721   | 2.31          | 68k         | 0.31         | ✅ Decent                    |
-| **mas_strategy_btcusdt_3**      | 227    | 40.5% | 301,130   | 2.26          | 55k         | 0.28         | ⚠️ Risky but Profitable      |
-| **mas_strategy_ethusdt**        | 321    | 43.9% | 1,141,824 | 2.24          | 114k        | 0.28         | ⚠️ Risky but Profitable      |
-| **volume_mas_strategy_ethusdt** | 190    | 40.0% | 106,179   | 2.15          | 14k         | 0.24         | ⚠️ Lower Edge                |
+| **macd_slope_strategy_btcusdt** | 73     | 43.8% | 44,190    | 2.58          | 3.9k        | 0.29         | ✅ Strong, Low Risk          |
+| **mas_strategy_btcusdt**        | 302    | 45.0% | 623,721   | 2.31          | 68k         | 0.31         | ⚠️ Risky, Profitable         |
+| **mas_strategy_btcusdt_3**      | 227    | 40.5% | 301,130   | 2.26          | 55k         | 0.28         | ⚠️ Risky, Profitable         |
+| **mas_strategy_ethusdt**        | 321    | 43.9% | 1,141,824 | 2.24          | 114k        | 0.28         | ⚠️ Risky, Profitable         |
+| **volume_mas_strategy_ethusdt** | 178    | 40.5% | 1,345,197 | 2.84          | 165.6k      | 0.34         | ⚠️ Risky, High Reward        |
 | **mas_strategy_btcusdt_5**      | 431    | 39.9% | 204,657   | 1.65          | 32k         | 0.23         | ❌ Overtrading, Lower Edge   |
 | **ema_strategy_btcusdt**        | 768    | 34.5% | 25,642    | 1.29          | 11.8k       | 0.13         | ❌ Weak                      |
