@@ -300,20 +300,21 @@ Final Balance: $44111.23
 
 # 📊 Summary Table
 
-| Strategy                        | Trades | Win%  | PnL (\$)  | Profit Factor | Max DD (\$) | Sharpe Ratio | Verdict                      |
-| ------------------------------- | ------ | ----- | --------- | ------------- | ----------- | ------------ | ---------------------------- |
-| **macd_slope_strategy_solusdt** | 40     | 47.5% | 319,355   | 4.73          | 37.9k       | 0.47         | ⭐️ High Edge, Moderate Risk |
-| **stochastic_strategy_btcusdt** | 11     | 63.6% | 160,405   | 38.22         | 1.6k        | 0.61         | ⭐️ High Edge, Low Freq      |
-| **volume_mas_strategy_solusdt** | 122    | 46.7% | 971,196   | 2.67          | 106.5k      | 0.34         | ⚠️ Risky, High Reward        |
-| **mas_strategy_btcusdt_2**      | 129    | 53.5% | 48,863    | 3.41          | 2.5k        | 0.40         | ✅ Very Solid                |
-| **volume_mas_strategy_btcusdt** | 179    | 46.9% | 273,063   | 3.30          | 13k         | 0.40         | ✅ Very Solid                |
-| **mas_strategy_btcusdt_4**      | 140    | 51.4% | 45,503    | 2.76          | 4.9k        | 0.36         | ✅ Solid                     |
-| **mas_strategy_ethusdt_2**      | 111    | 51.4% | 35,301    | 2.19          | 7k          | 0.35         | ✅ Solid                     |
-| **macd_slope_strategy_ethusdt** | 66     | 47.0% | 123,603   | 2.11          | 26.2k       | 0.38         | ✅ Good, Risky               |
-| **macd_slope_strategy_btcusdt** | 73     | 43.8% | 44,190    | 2.58          | 3.9k        | 0.29         | ✅ Strong, Low Risk          |
-| **mas_strategy_btcusdt**        | 302    | 45.0% | 623,721   | 2.31          | 68k         | 0.31         | ⚠️ Risky, Profitable         |
-| **mas_strategy_btcusdt_3**      | 227    | 40.5% | 301,130   | 2.26          | 55k         | 0.28         | ⚠️ Risky, Profitable         |
-| **mas_strategy_ethusdt**        | 321    | 43.9% | 1,141,824 | 2.24          | 114k        | 0.28         | ⚠️ Risky, Profitable         |
-| **volume_mas_strategy_ethusdt** | 178    | 40.5% | 1,345,197 | 2.84          | 165.6k      | 0.34         | ⚠️ Risky, High Reward        |
-| **mas_strategy_btcusdt_5**      | 431    | 39.9% | 204,657   | 1.65          | 32k         | 0.23         | ❌ Overtrading, Lower Edge   |
-| **ema_strategy_btcusdt**        | 768    | 34.5% | 25,642    | 1.29          | 11.8k       | 0.13         | ❌ Weak                      |
+| Strategy                         | Trades | Win%  | PnL (\$)  | Profit Factor | Max DD (\$) | Sharpe Ratio | Verdict                      |
+| -------------------------------- | ------ | ----- | --------- | ------------- | ----------- | ------------ | ---------------------------- |
+| **macd_slope_strategy_solusdt**  | 40     | 50.0% | 345,025   | 3.95          | 55.6k       | 0.47         | ⭐️ High Edge, Moderate Risk |
+| **stochastic_strategy_btcusdt**  | 11     | 63.6% | 160,405   | 38.22         | 1.6k        | 0.61         | ⭐️ High Edge, Low Freq      |
+| **volume_mas_strategy_solusdt**  | 122    | 46.7% | 971,196   | 2.67          | 106.5k      | 0.34         | ⚠️ Risky, High Reward        |
+| **mas_strategy_btcusdt_2**       | 129    | 53.5% | 48,863    | 3.41          | 2.5k        | 0.40         | ✅ Very Solid                |
+| **volume_mas_strategy_btcusdt**  | 179    | 46.9% | 273,063   | 3.30          | 13k         | 0.40         | ✅ Very Solid                |
+| **mas_strategy_btcusdt_4**       | 140    | 51.4% | 45,503    | 2.76          | 4.9k        | 0.36         | ✅ Solid                     |
+| **mas_strategy_ethusdt_2**       | 111    | 51.4% | 35,301    | 2.19          | 7k          | 0.35         | ✅ Solid                     |
+| **macd_slope_strategy_ethusdt**  | 66     | 47.0% | 123,603   | 2.11          | 26.2k       | 0.38         | ✅ Good, Risky               |
+| **macd_slope_strategy_btcusdt**  | 73     | 43.8% | 44,190    | 2.58          | 3.9k        | 0.29         | ✅ Strong, Low Risk          |
+| **macd_slope_strategy_linkusdt** | 123    | 46.3% | 42,111    | 1.52          | 16.9k       | 0.24         | ⚠️ Risky, Lower Edge         |
+| **mas_strategy_btcusdt**         | 302    | 45.0% | 623,721   | 2.31          | 68k         | 0.31         | ⚠️ Risky, Profitable         |
+| **mas_strategy_btcusdt_3**       | 227    | 40.5% | 301,130   | 2.26          | 55k         | 0.28         | ⚠️ Risky, Profitable         |
+| **mas_strategy_ethusdt**         | 321    | 43.9% | 1,141,824 | 2.24          | 114k        | 0.28         | ⚠️ Risky, Profitable         |
+| **volume_mas_strategy_ethusdt**  | 178    | 40.5% | 1,345,197 | 2.84          | 165.6k      | 0.34         | ⚠️ Risky, High Reward        |
+| **mas_strategy_btcusdt_5**       | 431    | 39.9% | 204,657   | 1.65          | 32k         | 0.23         | ❌ Overtrading, Lower Edge   |
+| **ema_strategy_btcusdt**         | 768    | 34.5% | 25,642    | 1.29          | 11.8k       | 0.13         | ❌ Weak                      |
