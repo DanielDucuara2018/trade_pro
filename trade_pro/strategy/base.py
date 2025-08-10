@@ -138,14 +138,15 @@ class Base:
         entry_price = 0
         entry_time = pd.NaT
         units = 0
+        historical_buffer = histo_data.copy()
         while True:
-            new_dfs = {
+            historical_buffer = {
                 timeframe: update_data(
-                    histo_data[timeframe], fetch_candles(self.symbol, timeframe, 50)
+                    historical_buffer[timeframe], fetch_candles(self.symbol, timeframe, 50)
                 )
                 for timeframe in self.timeframes
             }
-            data = self.compute_indicators(new_dfs)
+            data = self.compute_indicators(historical_buffer)
 
             row = data.iloc[self.start_live_index]
             if self.entry_condition(data, index=self.start_live_index):
