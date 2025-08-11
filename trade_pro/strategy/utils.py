@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_candles(symbol: str, timeframe: str, limit=10, retry: int = 5) -> pd.DataFrame:
     time.sleep(10)
-
+    logger.info("Fetching candles for %s, timeframe=%s", symbol, timeframe)
     try:
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
     except ccxt.RequestTimeout as e:
@@ -36,6 +36,7 @@ def fetch_candles(symbol: str, timeframe: str, limit=10, retry: int = 5) -> pd.D
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     df.set_index("timestamp", inplace=True)
     df = df.drop_duplicates()
+    logger.info("Fetched %d candles for %s, timeframe=%s", len(df), symbol, timeframe)
     return df
 
 

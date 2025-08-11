@@ -139,16 +139,20 @@ class Base:
         entry_time = pd.NaT
         units = 0
         historical_buffer = histo_data.copy()
+        logger.info(f"[{self.__class__.__name__}] Running live trading loop")
         while True:
+            logger.info(f"[{self.__class__.__name__}] Fetching new data")
             historical_buffer = {
                 timeframe: update_data(
                     historical_buffer[timeframe], fetch_candles(self.symbol, timeframe, 50)
                 )
                 for timeframe in self.timeframes
             }
+            logger.info(f"[{self.__class__.__name__}] Computing indicators")
             data = self.compute_indicators(historical_buffer)
 
             row = data.iloc[self.start_live_index]
+            logger.info(f"[{self.__class__.__name__}] Running entry/exit condition")
             if self.entry_condition(data, index=self.start_live_index):
                 entry_price, entry_time, units = self.execute_entry(row)
             elif self.exit_condition(data, index=self.start_live_index):
@@ -185,6 +189,7 @@ class Base:
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
         if self.mode == Mode.LIVE:
+            logger.info(msg)
             self.telegram_bot.send_telegram_message(msg)
         return entry_price, entry_time, units
 
@@ -220,6 +225,7 @@ class Base:
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
         if self.mode == Mode.LIVE:
+            logger.info(msg)
             self.telegram_bot.send_telegram_message(msg)
 
     def resume_backtest(self, trades: list[dict[str, Any]]):
