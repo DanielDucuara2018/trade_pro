@@ -45,7 +45,7 @@ class Base:
         commission: float = 0.0004,
         slippage: float = 0.0005,
         start_backtest_index: int = 0,
-        start_live_index: int = -1,
+        start_live_index: int = -2,
     ):
         self.symbol = symbol
         self.initial_balance = initial_balance
