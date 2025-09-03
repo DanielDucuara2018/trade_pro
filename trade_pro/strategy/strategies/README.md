@@ -1,3 +1,38 @@
+# Strategy Backtest Results
+
+## Testing Environment
+
+- **Test Period**: 2017-01-01 to 2025-06-13
+- **Initial Capital**: $2,000
+- **Trading Fees**: 0.1% per trade
+- **Data Source**: Binance historical data
+- **Test Environment**: Trade Pro Backtesting Engine
+
+## Performance Categories
+
+🏆 **Elite Performers** (Profit Factor > 3.0, Sharpe > 0.4)
+
+- Stochastic BTC Strategy
+- MACD Slope SOL Strategy
+- MAS BTC Strategy v2
+
+⭐ **Strong Performers** (Profit Factor > 2.0, Sharpe > 0.3)
+
+- Volume MAS BTC Strategy
+- MAS BTC Strategy v4
+- MACD Slope ETH Strategy
+
+⚠️ **High Risk/Reward** (High PnL but high drawdown)
+
+- Volume MAS ETH Strategy
+- MAS ETH Strategy
+- Volume MAS SOL Strategy
+
+❌ **Needs Improvement** (Profit Factor < 1.5 or Sharpe < 0.2)
+
+- EMA BTC Strategy
+- MAS BTC Strategy v5
+
 # Backtest results
 
 ## MAS strategy
@@ -298,23 +333,27 @@ Total PnL: $42111.23
 Final Balance: $44111.23
 ```
 
-# 📊 Summary Table
+# 📊 Performance Summary
 
-| Strategy                         | Trades | Win%  | PnL (\$)  | Profit Factor | Max DD (\$) | Sharpe Ratio | Verdict                      |
-| -------------------------------- | ------ | ----- | --------- | ------------- | ----------- | ------------ | ---------------------------- |
-| **macd_slope_strategy_solusdt**  | 40     | 50.0% | 345,025   | 3.95          | 55.6k       | 0.47         | ⭐️ High Edge, Moderate Risk |
-| **stochastic_strategy_btcusdt**  | 11     | 63.6% | 160,405   | 38.22         | 1.6k        | 0.61         | ⭐️ High Edge, Low Freq      |
-| **volume_mas_strategy_solusdt**  | 122    | 46.7% | 971,196   | 2.67          | 106.5k      | 0.34         | ⚠️ Risky, High Reward        |
-| **mas_strategy_btcusdt_2**       | 129    | 53.5% | 48,863    | 3.41          | 2.5k        | 0.40         | ✅ Very Solid                |
-| **volume_mas_strategy_btcusdt**  | 179    | 46.9% | 273,063   | 3.30          | 13k         | 0.40         | ✅ Very Solid                |
-| **mas_strategy_btcusdt_4**       | 140    | 51.4% | 45,503    | 2.76          | 4.9k        | 0.36         | ✅ Solid                     |
-| **mas_strategy_ethusdt_2**       | 111    | 51.4% | 35,301    | 2.19          | 7k          | 0.35         | ✅ Solid                     |
-| **macd_slope_strategy_ethusdt**  | 66     | 47.0% | 123,603   | 2.11          | 26.2k       | 0.38         | ✅ Good, Risky               |
-| **macd_slope_strategy_btcusdt**  | 73     | 43.8% | 44,190    | 2.58          | 3.9k        | 0.29         | ✅ Strong, Low Risk          |
-| **macd_slope_strategy_linkusdt** | 123    | 46.3% | 42,111    | 1.52          | 16.9k       | 0.24         | ⚠️ Risky, Lower Edge         |
-| **mas_strategy_btcusdt**         | 302    | 45.0% | 623,721   | 2.31          | 68k         | 0.31         | ⚠️ Risky, Profitable         |
-| **mas_strategy_btcusdt_3**       | 227    | 40.5% | 301,130   | 2.26          | 55k         | 0.28         | ⚠️ Risky, Profitable         |
-| **mas_strategy_ethusdt**         | 321    | 43.9% | 1,141,824 | 2.24          | 114k        | 0.28         | ⚠️ Risky, Profitable         |
-| **volume_mas_strategy_ethusdt**  | 178    | 40.5% | 1,345,197 | 2.84          | 165.6k      | 0.34         | ⚠️ Risky, High Reward        |
-| **mas_strategy_btcusdt_5**       | 431    | 39.9% | 204,657   | 1.65          | 32k         | 0.23         | ❌ Overtrading, Lower Edge   |
-| **ema_strategy_btcusdt**         | 768    | 34.5% | 25,642    | 1.29          | 11.8k       | 0.13         | ❌ Weak                      |
+| Strategy                    | Trades | Win%   | PnL ($)      | PF¹   | Max DD² (%) | Sharpe | Verdict              |
+| --------------------------- | ------ | ------ | ------------ | ----- | ----------- | ------ | -------------------- |
+| **Stochastic BTC Strategy** | 11     | 63.64% | 160,405.42   | 38.22 | 0.98        | 0.61   | 🏆 Elite Performer   |
+| **MACD Slope SOL Strategy** | 40     | 50.00% | 345,025.31   | 3.95  | 55.6        | 0.47   | 🏆 Elite Performer   |
+| **MAS BTC Strategy v2**     | 129    | 53.49% | 48,862.77    | 3.41  | 2.5         | 0.40   | 🏆 Elite Performer   |
+| **Volume MAS BTC Strategy** | 179    | 46.93% | 273,063.50   | 3.30  | 13.0        | 0.40   | ⭐ Strong Performer  |
+| **MAS BTC Strategy v4**     | 140    | 51.43% | 45,502.75    | 2.76  | 4.9         | 0.36   | ⭐ Strong Performer  |
+| **MACD Slope ETH Strategy** | 66     | 46.97% | 123,603.43   | 2.11  | 26.2        | 0.38   | ⭐ Strong Performer  |
+| **Volume MAS ETH Strategy** | 178    | 40.45% | 1,345,197.00 | 2.84  | 165.6       | 0.34   | ⚠️ High Risk/Reward  |
+| **MAS ETH Strategy**        | 321    | 43.93% | 1,141,824.12 | 2.24  | 114.0       | 0.28   | ⚠️ High Risk/Reward  |
+| **Volume MAS SOL Strategy** | 122    | 46.72% | 971,196.43   | 2.67  | 106.5       | 0.34   | ⚠️ High Risk/Reward  |
+| **MAS BTC Strategy**        | 302    | 45.03% | 623,721.13   | 2.31  | 68.0        | 0.31   | ⚠️ High Risk/Reward  |
+| **MAS BTC Strategy v3**     | 227    | 40.53% | 301,130.32   | 2.26  | 55.0        | 0.28   | ⚠️ High Risk/Reward  |
+| **EMA BTC Strategy**        | 768    | 34.51% | 25,642.46    | 1.29  | 11.8        | 0.13   | ❌ Needs Improvement |
+| **MAS BTC Strategy v5**     | 431    | 39.91% | 204,656.73   | 1.65  | 32.0        | 0.23   | ❌ Needs Improvement |
+
+## Key Findings
+
+1. **Best Overall Strategy**: Stochastic BTC with highest risk-adjusted returns (Sharpe 0.61)
+2. **Most Consistent**: MAS BTC v2 with solid metrics across all categories
+3. **Most Scalable**: Volume MAS BTC showing good balance of returns and risk
+4. **Needs Optimization**: EMA BTC showing poor risk-adjusted returns
