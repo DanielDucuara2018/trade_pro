@@ -37,17 +37,18 @@ class MASStrategy(Base):
     def __init__(
         self,
         symbol: str,
-        initial_balance: float,
+        initial_balance: int,
         timeframes: list[str],
         start_backtest_index: int,
-        fast: float,
-        slow: float,
-        rsi_period: float,
-        rsi_threshold: float,
-        macd_fast: float,
-        macd_slow: float,
-        macd_signal: float,
-        trend_sma_period: float,
+        fast: int,
+        slow: int,
+        rsi_period: int,
+        rsi_threshold: int,
+        macd_fast: int,
+        macd_slow: int,
+        macd_signal: int,
+        trend_sma_period: int,
+        take_profit: float | None = None,
     ):
         super().__init__(
             symbol, initial_balance, timeframes, start_backtest_index=start_backtest_index
@@ -60,6 +61,8 @@ class MASStrategy(Base):
         self.macd_slow = macd_slow
         self.macd_signal = macd_signal
         self.trend_sma_period = trend_sma_period
+        self.take_profit = take_profit
+        self.entry_price = None
 
     def check_config(self) -> bool:
         """
@@ -137,7 +140,7 @@ class MASStrategy(Base):
         prev = df.iloc[index - 1]
         prev2 = df.iloc[index - 2]
 
-        return (
+        entry_condition = (
             not self.position
             and prev2["SPREAD_SIGN"] == -1
             and prev["SPREAD_SIGN"] == -1
@@ -146,6 +149,11 @@ class MASStrategy(Base):
             and row["MACD"] > row["MACD_SIGNAL"]
             and row["BULLISH_TREND"]
         )
+
+        if entry_condition:
+            self.entry_price = row["close"]
+
+        return entry_condition
 
     def exit_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
         """
@@ -165,6 +173,18 @@ class MASStrategy(Base):
         prev = df.iloc[index - 1]
         prev2 = df.iloc[index - 2]
 
-        return self.position and (
-            prev2["SPREAD_SIGN"] == 1 and prev["SPREAD_SIGN"] == 1 and row["SPREAD_SIGN"] == -1
+        percentage_gain = (
+            (row["close"] - self.entry_price) / self.entry_price if self.entry_price else 0
         )
+
+        exit_condition = self.position and (
+            prev2["SPREAD_SIGN"] == 1
+            and prev["SPREAD_SIGN"] == 1
+            and row["SPREAD_SIGN"] == -1
+            or (self.take_profit is not None and percentage_gain >= self.take_profit / 100)
+        )
+
+        if exit_condition:
+            self.exit_price = None
+
+        return exit_condition

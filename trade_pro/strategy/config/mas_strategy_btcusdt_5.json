@@ -4,8 +4,15 @@
         "initial_balance": 2000,
         "timeframes": ["1h", "1d"],
         "start_backtest_index": 2,
-        "fast": 13, "slow": 44, "rsi_period": 20, "rsi_threshold": 70, "macd_fast": 16, "macd_slow": 22, "macd_signal": 14, "trend_sma_period": 14
-    } ,
+        "fast": 13,
+        "slow": 44,
+        "rsi_period": 20,
+        "rsi_threshold": 70,
+        "macd_fast": 16,
+        "macd_slow": 22,
+        "macd_signal": 14,
+        "trend_sma_period": 14
+    },
     "optimization": {
         "variables":{
             "fast": {"low": 5, "high": 80},
