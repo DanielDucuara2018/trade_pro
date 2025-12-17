@@ -33,9 +33,10 @@ class MACDSlopeStrategy(Base):
         macd_fast: int,
         macd_slow: int,
         macd_signal: int,
+        **kwargs,
     ):
         super().__init__(
-            symbol, initial_balance, timeframes, start_backtest_index=start_backtest_index
+            symbol, initial_balance, timeframes, start_backtest_index=start_backtest_index, **kwargs
         )
         self.macd_fast = macd_fast
         self.macd_slow = macd_slow

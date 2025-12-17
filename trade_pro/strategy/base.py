@@ -99,6 +99,7 @@ class Base:
         allow_multiple_positions: bool = False,
         max_concurrent_trades: int = 3,
         position_size_pct: float = 1.0,
+        use_next_candle_open: bool = False,  # Fix look-ahead bias
     ):
         self.symbol = symbol
         self.initial_balance = initial_balance
@@ -108,6 +109,7 @@ class Base:
         self.slippage = slippage
         self.start_backtest_index = start_backtest_index
         self.start_live_index = start_live_index
+        self.use_next_candle_open = use_next_candle_open
 
         # Multiple position settings
         self.allow_multiple_positions = allow_multiple_positions
@@ -295,16 +297,17 @@ class Base:
 
         for i in range(self.start_backtest_index, len(data)):
             row = data.iloc[i]
+            next_row = data.iloc[i + 1] if i + 1 < len(data) else None
 
             if self.allow_multiple_positions:
                 # Handle multiple positions
-                self._handle_multiple_positions(data, row, i)
+                self._handle_multiple_positions(data, row, i, next_row)
             else:
                 # Legacy single position logic
                 if self.entry_condition(data, index=i):
-                    entry_price, entry_time, units = self.execute_entry(row)
+                    entry_price, entry_time, units = self.execute_entry(row, next_row)
                 elif self.exit_condition(data, index=i):
-                    self.execute_exit(row, entry_price, entry_time, units)
+                    self.execute_exit(row, entry_price, entry_time, units, next_row)
 
         # Close any remaining active trades at the end of backtest
         if self.allow_multiple_positions and self.active_trades:
@@ -319,15 +322,23 @@ class Base:
     def execute_entry(
         self,
         row: pd.Series,
+        next_row: pd.Series | None = None,
     ) -> tuple[float, pd.Timestamp, float]:
         """Legacy single position entry - maintained for backward compatibility"""
         if self.allow_multiple_positions:
             # If using multiple positions, delegate to new system
-            trade = self._execute_multiple_entry(row)
+            trade = self._execute_multiple_entry(row, next_row)
             return trade.entry_price, trade.entry_time, trade.units
 
-        # Original single position logic using Trade dataclass for consistency
-        entry_price = row["close"] * (1 + self.slippage + self.commission)
+        # Determine execution price based on look-ahead bias setting
+        if self.use_next_candle_open and next_row is not None:
+            # Use next candle's open price (realistic execution)
+            execution_price = next_row["open"]
+        else:
+            # Use current candle's close price (legacy, has look-ahead bias)
+            execution_price = row["close"]
+
+        entry_price = execution_price * (1 + self.slippage + self.commission)
         units = self.balance / entry_price
         position_size = units * entry_price
         entry_time = row.name
@@ -361,6 +372,7 @@ class Base:
         entry_price: float,
         entry_time: pd.Timestamp,
         units: float,
+        next_row: pd.Series | None = None,
     ) -> None:
         """Legacy single position exit - maintained for backward compatibility"""
         if self.allow_multiple_positions:
@@ -388,7 +400,7 @@ class Base:
             self.trades[trade_id] = trade
 
         # Close the trade using unified method
-        closed_trade = self._close_trade_and_record(trade, row, "Exit condition met")
+        closed_trade = self._close_trade_and_record(trade, row, "Exit condition met", next_row)
 
         # Clear stored trade and update legacy position flag
         self._current_single_trade = None
@@ -478,11 +490,13 @@ class Base:
             plot_price_chart(symbol, self.__class__.__name__, df, completed_trades)
             plot_equity_curve(symbol, self.__class__.__name__, completed_trades)
 
-    def _handle_multiple_positions(self, data: pd.DataFrame, row: pd.Series, index: int) -> None:
+    def _handle_multiple_positions(
+        self, data: pd.DataFrame, row: pd.Series, index: int, next_row: pd.Series | None = None
+    ) -> None:
         """Handle multiple position logic for both backtesting and live trading"""
         # Check for new entries
         if self.should_enter_new_position(data, index=index):
-            self._execute_multiple_entry(row)
+            self._execute_multiple_entry(row, next_row)
 
         # Check exits for all active trades
         trades_to_close = []
@@ -492,11 +506,17 @@ class Base:
 
         # Close trades that meet exit conditions
         for trade_id in trades_to_close:
-            self._close_active_trade(trade_id, row, "Exit condition met")
+            self._close_active_trade(trade_id, row, "Exit condition met", next_row)
 
-    def _execute_multiple_entry(self, row: pd.Series) -> Trade:
+    def _execute_multiple_entry(self, row: pd.Series, next_row: pd.Series | None = None) -> Trade:
         """Execute entry for multiple position strategy"""
-        entry_price = row["close"] * (1 + self.slippage + self.commission)
+        # Determine execution price based on look-ahead bias setting
+        if self.use_next_candle_open and next_row is not None:
+            execution_price = next_row["open"]
+        else:
+            execution_price = row["close"]
+
+        entry_price = execution_price * (1 + self.slippage + self.commission)
 
         # Calculate position size based on available balance and percentage allocation
         available_balance = self._get_available_balance()
@@ -534,13 +554,21 @@ class Base:
 
         return trade
 
-    def _close_trade_and_record(self, trade: Trade, row: pd.Series, reason: str = "") -> Trade:
+    def _close_trade_and_record(
+        self, trade: Trade, row: pd.Series, reason: str = "", next_row: pd.Series | None = None
+    ) -> Trade:
         """
         Unified method to close a trade and record it in trade history.
         Works for both single and multiple position modes.
         Returns the closed Trade object.
         """
-        exit_price = row["close"] * (1 - self.slippage - self.commission)
+        # Determine execution price based on look-ahead bias setting
+        if self.use_next_candle_open and next_row is not None:
+            execution_price = next_row["open"]
+        else:
+            execution_price = row["close"]
+
+        exit_price = execution_price * (1 - self.slippage - self.commission)
         exit_time = row.name
 
         # Close the trade (this calculates PnL and other metrics)
@@ -551,7 +579,9 @@ class Base:
 
         return trade
 
-    def _close_active_trade(self, trade_id: str, row: pd.Series, reason: str = "") -> None:
+    def _close_active_trade(
+        self, trade_id: str, row: pd.Series, reason: str = "", next_row: pd.Series | None = None
+    ) -> None:
         """Close an active trade and record it in trade history"""
         if trade_id not in self.trades or self.trades[trade_id].is_closed:
             return
@@ -559,7 +589,7 @@ class Base:
         trade = self.trades[trade_id]
 
         # Use unified close method
-        closed_trade = self._close_trade_and_record(trade, row, reason)
+        closed_trade = self._close_trade_and_record(trade, row, reason, next_row)
 
         # Update legacy position flag
         self.position = len(self.active_trades) > 0
