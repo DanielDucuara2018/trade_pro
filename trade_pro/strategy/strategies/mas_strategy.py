@@ -61,7 +61,9 @@ class MASStrategy(Base):
         self.macd_slow = macd_slow
         self.macd_signal = macd_signal
         self.trend_sma_period = trend_sma_period
-        self.take_profit = take_profit
+        self.take_profit = (
+            take_profit  # TODO add 1m or 4m data to track it price gets the take_profit
+        )
         self.entry_price = None
 
     def check_config(self) -> bool:
