@@ -37,7 +37,6 @@ class MACDSlopeStrategy(Base):
         atr_stop_multiplier: float = 2.0,
         risk_reward_ratio: float = 2.0,
         use_atr_stops: bool = False,
-        early_exit_on_weakness: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -49,7 +48,6 @@ class MACDSlopeStrategy(Base):
         self.atr_period = atr_period
         self.atr_stop_multiplier = atr_stop_multiplier
         self.risk_reward_ratio = risk_reward_ratio
-        self.early_exit_on_weakness = early_exit_on_weakness
         self.use_atr_stops = use_atr_stops
 
     def check_config(self) -> bool:
@@ -111,22 +109,7 @@ class MACDSlopeStrategy(Base):
         prev = df.iloc[index - 1]
         prev2 = df.iloc[index - 2]
 
-        original_exit = (
-            prev2["MACD_slope"] > 0 and prev["MACD_slope"] > 0 and row["MACD_slope"] <= 0
-        )
-
-        # Early exit: exit on first sign of weakness (slope decreasing)
-        if self.early_exit_on_weakness:
-            # Exit if slope is decreasing for 2 consecutive bars
-            slope_weakening = (
-                prev2["MACD_slope"] > prev["MACD_slope"]
-                and prev["MACD_slope"] > row["MACD_slope"]
-                and row["MACD_slope"] > 0  # Still positive but weakening
-            )
-            if slope_weakening:
-                return True
-
-        return original_exit
+        return prev2["MACD_slope"] > 0 and prev["MACD_slope"] > 0 and row["MACD_slope"] <= 0
 
     def execute_entry(self, row: pd.Series, next_row: pd.Series | None = None):
         """Override to add ATR-based stop loss and take profit"""

@@ -100,6 +100,10 @@ class Base:
         max_concurrent_trades: int = 3,
         position_size_pct: float = 1.0,
         use_next_candle_open: bool = False,  # Fix look-ahead bias
+        walk_forward_enabled: bool = False,
+        walk_forward_train_size: int = 365,  # Days for training
+        walk_forward_test_size: int = 90,  # Days for testing
+        walk_forward_step: int = 90,  # Days to move forward each iteration
     ):
         self.symbol = symbol
         self.initial_balance = initial_balance
@@ -110,6 +114,12 @@ class Base:
         self.start_backtest_index = start_backtest_index
         self.start_live_index = start_live_index
         self.use_next_candle_open = use_next_candle_open
+
+        # Walk-forward testing parameters
+        self.walk_forward_enabled = walk_forward_enabled
+        self.walk_forward_train_size = walk_forward_train_size
+        self.walk_forward_test_size = walk_forward_test_size
+        self.walk_forward_step = walk_forward_step
 
         # Multiple position settings
         self.allow_multiple_positions = allow_multiple_positions
@@ -125,6 +135,7 @@ class Base:
         self._current_single_trade: Trade | None = None  # Current trade for single position mode
         self.mode = None
         self.telegram_bot = None
+        self._trade_counter = 0  # Counter for unique trade IDs
 
     @property
     def active_trades(self) -> dict[str, Trade]:
@@ -254,61 +265,59 @@ class Base:
             self.live(data, histo_data)
 
     def live(self, data: pd.DataFrame, histo_data: dict[str, pd.DataFrame]) -> None:
-        """run trading strategy"""
-        # Legacy single position variables
-        entry_price = 0
-        entry_time = pd.NaT
-        units = 0
-
+        """Run live trading loop with real-time data"""
+        entry_price, entry_time, units = self._init_single_position_vars()
         historical_buffer = histo_data.copy()
+
         logger.info(f"[{self.__class__.__name__}] Running live trading loop")
         while True:
-            logger.info(f"[{self.__class__.__name__}] Fetching new data")
-            historical_buffer = {
-                timeframe: update_data(
-                    historical_buffer[timeframe], fetch_candles(self.symbol, timeframe, 50)
-                )
-                for timeframe in self.timeframes
-            }
-            logger.info(f"[{self.__class__.__name__}] Computing indicators")
+            historical_buffer = self._fetch_latest_data(historical_buffer)
             data = self.compute_indicators(historical_buffer)
-
             row = data.iloc[self.start_live_index]
-            logger.info(f"[{self.__class__.__name__}] Running entry/exit condition")
 
-            if self.allow_multiple_positions:
-                # Handle multiple positions
-                self._handle_multiple_positions(data, row, self.start_live_index)
-            else:
-                # Legacy single position logic
-                if self.entry_condition(data, index=self.start_live_index):
-                    entry_price, entry_time, units = self.execute_entry(row)
-                elif self.exit_condition(data, index=self.start_live_index):
-                    self.execute_exit(row, entry_price, entry_time, units)
+            logger.info(f"[{self.__class__.__name__}] Running entry/exit condition")
+            entry_price, entry_time, units = self._process_candle(
+                data, row, self.start_live_index, None, entry_price, entry_time, units
+            )
 
             wait_for_next_candle(timeframe=self.timeframes[0])
 
+    def _fetch_latest_data(
+        self, historical_buffer: dict[str, pd.DataFrame]
+    ) -> dict[str, pd.DataFrame]:
+        """Fetch and update latest candle data"""
+        logger.info(f"[{self.__class__.__name__}] Fetching new data")
+        updated_buffer = {
+            timeframe: update_data(
+                historical_buffer[timeframe], fetch_candles(self.symbol, timeframe, 50)
+            )
+            for timeframe in self.timeframes
+        }
+        logger.info(f"[{self.__class__.__name__}] Computing indicators")
+        return updated_buffer
+
     def backtest(self, data: pd.DataFrame) -> None:
         """run back testing strategy"""
-        # Legacy single position variables
-        entry_price = 0
-        entry_time = pd.NaT
-        units = 0
+        if self.walk_forward_enabled:
+            self._run_walk_forward_backtest(data)
+        else:
+            self._run_simple_backtest(data)
+
+    def _run_simple_backtest(self, data: pd.DataFrame) -> None:
+        """Traditional backtest on entire dataset"""
+        entry_price, entry_time, units = self._init_single_position_vars()
 
         for i in range(self.start_backtest_index, len(data)):
             row = data.iloc[i]
             next_row = data.iloc[i + 1] if i + 1 < len(data) else None
+            entry_price, entry_time, units = self._process_candle(
+                data, row, i, next_row, entry_price, entry_time, units
+            )
 
-            if self.allow_multiple_positions:
-                self._handle_multiple_positions(data, row, i, next_row)
-            else:
-                # Legacy single position logic
-                if self.entry_condition(data, index=i):
-                    entry_price, entry_time, units = self.execute_entry(row, next_row)
-                elif self.exit_condition(data, index=i):
-                    self.execute_exit(row, entry_price, entry_time, units, next_row)
+        self._finalize_backtest(data)
 
-        # Close any remaining active trades at the end of backtest
+    def _finalize_backtest(self, data: pd.DataFrame) -> None:
+        """Close remaining trades and generate reports"""
         if self.allow_multiple_positions and self.active_trades:
             final_row = data.iloc[-1]
             for trade_id in list(self.active_trades.keys()):
@@ -318,32 +327,231 @@ class Base:
             self.resume_backtest(self.trades)
             self.generate_chart(self.symbol, data, self.trades)
 
+    def _run_walk_forward_backtest(self, data: pd.DataFrame) -> None:
+        """Run rolling window validation test"""
+        self._print_walk_forward_header()
+        window_results = self._execute_walk_forward_windows(data)
+        self._print_walk_forward_summary(window_results)
+
+        if len(self.trades) > 0:
+            self.resume_backtest(self.trades)
+            self.generate_chart(self.symbol, data, self.trades)
+
+    def _print_walk_forward_header(self) -> None:
+        """Print walk-forward test header"""
+        logger.info("\n" + "=" * 60)
+        logger.info("WALK-FORWARD BACKTEST")
+        logger.info("=" * 60)
+
+    def _execute_walk_forward_windows(self, data: pd.DataFrame) -> list[dict]:
+        """Execute all walk-forward windows and return results"""
+        window_results = []
+        current_start = self.start_backtest_index
+        window_num = 1
+
+        while current_start + self.walk_forward_train_size + self.walk_forward_test_size <= len(
+            data
+        ):
+            window_result = self._run_single_window(data, current_start, window_num)
+            window_results.append(window_result)
+            current_start += self.walk_forward_step
+            window_num += 1
+
+        return window_results
+
+    def _run_single_window(self, data: pd.DataFrame, current_start: int, window_num: int) -> dict:
+        """Run single walk-forward window"""
+        train_start, train_end, test_start, test_end = self._calculate_window_indices(
+            data, current_start
+        )
+
+        self._log_window_info(data, window_num, train_start, train_end, test_start, test_end)
+        self._reset_backtest_state()
+        self._run_window_backtest(data, test_start, test_end)
+
+        return self._create_window_result(
+            data, window_num, train_start, train_end, test_start, test_end
+        )
+
+    def _calculate_window_indices(
+        self, data: pd.DataFrame, current_start: int
+    ) -> tuple[int, int, int, int]:
+        """Calculate train and test indices for window"""
+        train_start = current_start
+        train_end = current_start + self.walk_forward_train_size
+        test_start = train_end
+        test_end = min(test_start + self.walk_forward_test_size, len(data))
+        return train_start, train_end, test_start, test_end
+
+    def _log_window_info(
+        self,
+        data: pd.DataFrame,
+        window_num: int,
+        train_start: int,
+        train_end: int,
+        test_start: int,
+        test_end: int,
+    ) -> None:
+        """Log window date ranges"""
+        logger.info(f"\n--- Window {window_num} ---")
+        logger.info(
+            f"Train: {data.iloc[train_start].name} to {data.iloc[train_end - 1].name} ({train_end - train_start} bars)"
+        )
+        logger.info(
+            f"Test:  {data.iloc[test_start].name} to {data.iloc[test_end - 1].name} ({test_end - test_start} bars)"
+        )
+
+    def _run_window_backtest(self, data: pd.DataFrame, test_start: int, test_end: int) -> None:
+        """Run backtest for test period of window"""
+        entry_price, entry_time, units = self._init_single_position_vars()
+
+        for i in range(test_start, test_end):
+            row = data.iloc[i]
+            next_row = data.iloc[i + 1] if i + 1 < len(data) else None
+            entry_price, entry_time, units = self._process_candle(
+                data, row, i, next_row, entry_price, entry_time, units
+            )
+
+        self._close_remaining_trades(data, test_end)
+
+    def _close_remaining_trades(self, data: pd.DataFrame, test_end: int) -> None:
+        """Close any remaining active trades at end of window"""
+        if self.allow_multiple_positions and self.active_trades:
+            final_row = data.iloc[test_end - 1]
+            for trade_id in list(self.active_trades.keys()):
+                self._close_active_trade(trade_id, final_row, "End of window")
+
+    def _create_window_result(
+        self,
+        data: pd.DataFrame,
+        window_num: int,
+        train_start: int,
+        train_end: int,
+        test_start: int,
+        test_end: int,
+    ) -> dict:
+        """Create result dictionary for window"""
+        window_trades = len(self.completed_trades)
+        window_pnl = sum(t.pnl for t in self.completed_trades.values() if t.pnl is not None)
+
+        logger.info(
+            f"Trades: {window_trades} | PnL: ${window_pnl:.2f} | Balance: ${self.balance:.2f}"
+        )
+
+        return {
+            "window": window_num,
+            "train_start": data.iloc[train_start].name,
+            "train_end": data.iloc[train_end - 1].name,
+            "test_start": data.iloc[test_start].name,
+            "test_end": data.iloc[test_end - 1].name,
+            "trades": window_trades,
+            "pnl": window_pnl,
+            "final_balance": self.balance,
+        }
+
+    def _print_walk_forward_summary(self, window_results: list[dict]) -> None:
+        """Print summary of all walk-forward windows"""
+        logger.info("\n" + "=" * 60)
+        logger.info("WALK-FORWARD SUMMARY")
+        logger.info("=" * 60)
+
+        total_trades = sum(w["trades"] for w in window_results)
+        total_pnl = sum(w["pnl"] for w in window_results)
+        avg_pnl_per_window = total_pnl / len(window_results) if window_results else 0
+        profitable_windows = sum(1 for w in window_results if w["pnl"] > 0)
+
+        logger.info(f"Total Windows: {len(window_results)}")
+        logger.info(
+            f"Profitable Windows: {profitable_windows}/{len(window_results)} ({profitable_windows / len(window_results) * 100:.1f}%)"
+        )
+        logger.info(f"Total Trades: {total_trades}")
+        logger.info(f"Total PnL: ${total_pnl:.2f}")
+        logger.info(f"Avg PnL per Window: ${avg_pnl_per_window:.2f}")
+        logger.info(f"Final Balance: ${self.balance:.2f}")
+
+    def _reset_backtest_state(self) -> None:
+        """Reset state between walk-forward windows"""
+        self.balance = self.initial_balance
+        self.position = False
+        self.trades = {}
+        self._current_single_trade = None
+        self._trade_counter = 0
+        self.max_drawdown = 0
+        self.max_balance_seen = 0
+
+    def _init_single_position_vars(self) -> tuple[float, pd.Timestamp, float]:
+        """Initialize single position mode variables"""
+        return 0, pd.NaT, 0
+
+    def _generate_trade_id(self, entry_time: pd.Timestamp, trade_type: str = "single") -> str:
+        """Generate unique trade ID"""
+        self._trade_counter += 1
+        return f"{trade_type}_{self.symbol}_{entry_time}_{self._trade_counter}"
+
+    def _process_candle(
+        self,
+        data: pd.DataFrame,
+        row: pd.Series,
+        index: int,
+        next_row: pd.Series | None,
+        entry_price: float,
+        entry_time: pd.Timestamp,
+        units: float,
+    ) -> tuple[float, pd.Timestamp, float]:
+        """Process single candle for entry/exit logic"""
+        if self.allow_multiple_positions:
+            self._handle_multiple_positions(data, row, index, next_row)
+            return entry_price, entry_time, units
+
+        # Single position mode
+        if self.entry_condition(data, index=index):
+            return self.execute_entry(row, next_row)
+        elif self.exit_condition(data, index=index):
+            self.execute_exit(row, entry_price, entry_time, units, next_row)
+
+        return entry_price, entry_time, units
+
     def execute_entry(
         self,
         row: pd.Series,
         next_row: pd.Series | None = None,
     ) -> tuple[float, pd.Timestamp, float]:
-        """Legacy single position entry - maintained for backward compatibility"""
+        """Execute trade entry for single position mode"""
         if self.allow_multiple_positions:
-            # If using multiple positions, delegate to new system
             trade = self._execute_multiple_entry(row, next_row)
             return trade.entry_price, trade.entry_time, trade.units
 
-        # Determine execution price based on look-ahead bias setting
-        if self.use_next_candle_open and next_row is not None:
-            # Use next candle's open price (realistic execution)
-            execution_price = next_row["open"]
-        else:
-            # Use current candle's close price (legacy, has look-ahead bias)
-            execution_price = row["close"]
-
-        entry_price = execution_price * (1 + self.slippage + self.commission)
+        execution_price = self._get_execution_price(row, next_row)
+        entry_price = self._calculate_entry_price(execution_price)
         units = self.balance / entry_price
         position_size = units * entry_price
         entry_time = row.name
 
-        # Create and store trade in unified trades dict
-        trade_id = f"single_{self.symbol}_{entry_time}"
+        self._create_and_store_trade(entry_time, entry_price, units, position_size)
+        self.position = True
+        self._log_entry(entry_time, entry_price)
+
+        return entry_price, entry_time, units
+
+    def _get_execution_price(self, row: pd.Series, next_row: pd.Series | None) -> float:
+        """Get realistic execution price based on settings"""
+        if self.use_next_candle_open and next_row is not None:
+            return next_row["open"]
+        return row["close"]
+
+    def _calculate_entry_price(self, execution_price: float) -> float:
+        """Apply slippage and commission to execution price"""
+        return execution_price * (1 + self.slippage + self.commission)
+
+    def _calculate_exit_price(self, execution_price: float) -> float:
+        """Apply slippage and commission to exit price"""
+        return execution_price * (1 - self.slippage - self.commission)
+
+    def _create_and_store_trade(
+        self, entry_time: pd.Timestamp, entry_price: float, units: float, position_size: float
+    ) -> None:
+        """Create trade object and store in trades dict"""
+        trade_id = self._generate_trade_id(entry_time, "single")
         self._current_single_trade = Trade(
             id=trade_id,
             entry_time=entry_time,
@@ -353,8 +561,8 @@ class Base:
         )
         self.trades[trade_id] = self._current_single_trade
 
-        self.position = True
-
+    def _log_entry(self, entry_time: pd.Timestamp, entry_price: float) -> None:
+        """Log entry message to console and telegram"""
         msg = (
             f"📈 [ENTRY] [{self.__class__.__name__}] {self.symbol} {entry_time} @ {entry_price:.2f}"
         )
@@ -363,7 +571,6 @@ class Base:
         if self.mode == Mode.LIVE:
             logger.info(msg)
             self.telegram_bot.send_telegram_message(msg)
-        return entry_price, entry_time, units
 
     def execute_exit(
         self,
@@ -373,38 +580,41 @@ class Base:
         units: float,
         next_row: pd.Series | None = None,
     ) -> None:
-        """Legacy single position exit - maintained for backward compatibility"""
+        """Execute trade exit for single position mode"""
         if self.allow_multiple_positions:
-            # For multiple positions, this method is not used directly
-            # Exit logic is handled by should_exit_position and _close_active_trade
             logger.warning(
                 "execute_exit called in multiple position mode - use _close_active_trade instead"
             )
             return
 
-        # Use stored trade if available, otherwise create new Trade object
-        if hasattr(self, "_current_single_trade") and self._current_single_trade:
-            trade = self._current_single_trade
-        else:
-            # Fallback: create Trade object from parameters (for backward compatibility)
-            position_size = units * entry_price
-            trade_id = f"single_{self.symbol}_{entry_time}"
-            trade = Trade(
-                id=trade_id,
-                entry_time=entry_time,
-                entry_price=entry_price,
-                units=units,
-                position_size=position_size,
-            )
-            self.trades[trade_id] = trade
-
-        # Close the trade using unified method
+        trade = self._get_or_create_trade(entry_price, entry_time, units)
         closed_trade = self._close_trade_and_record(trade, row, "Exit condition met", next_row)
 
-        # Clear stored trade and update legacy position flag
         self._current_single_trade = None
         self.position = False
+        self._log_exit(closed_trade)
 
+    def _get_or_create_trade(
+        self, entry_price: float, entry_time: pd.Timestamp, units: float
+    ) -> Trade:
+        """Get existing trade or create from parameters for backward compatibility"""
+        if hasattr(self, "_current_single_trade") and self._current_single_trade:
+            return self._current_single_trade
+
+        position_size = units * entry_price
+        trade_id = self._generate_trade_id(entry_time, "single")
+        trade = Trade(
+            id=trade_id,
+            entry_time=entry_time,
+            entry_price=entry_price,
+            units=units,
+            position_size=position_size,
+        )
+        self.trades[trade_id] = trade
+        return trade
+
+    def _log_exit(self, closed_trade: Trade) -> None:
+        """Log exit message to console and telegram"""
         msg = (
             f"📉 [LONG EXIT] [{self.__class__.__name__}] {self.symbol} Time: {closed_trade.exit_time} Price: ${closed_trade.exit_price:.2f}."
             f"PnL: ${closed_trade.pnl:.2f} | Return: {(closed_trade.return_pct * 100):.2f}%"
@@ -508,24 +718,15 @@ class Base:
             self._close_active_trade(trade_id, row, "Exit condition met", next_row)
 
     def _execute_multiple_entry(self, row: pd.Series, next_row: pd.Series | None = None) -> Trade:
-        """Execute entry for multiple position strategy"""
-        # Determine execution price based on look-ahead bias setting
-        if self.use_next_candle_open and next_row is not None:
-            execution_price = next_row["open"]
-        else:
-            execution_price = row["close"]
+        """Execute entry for multiple position mode"""
+        execution_price = self._get_execution_price(row, next_row)
+        entry_price = self._calculate_entry_price(execution_price)
 
-        entry_price = execution_price * (1 + self.slippage + self.commission)
-
-        # Calculate position size based on available balance and percentage allocation
         available_balance = self._get_available_balance()
         position_value = available_balance * self.position_size_pct
         units = position_value / entry_price
 
-        # Generate unique trade ID
-        trade_id = f"{self.symbol}_{row.name}_{len(self.active_trades)}"
-
-        # Create trade object
+        trade_id = self._generate_trade_id(row.name, "multi")
         trade = Trade(
             id=trade_id,
             entry_time=row.name,
@@ -533,47 +734,33 @@ class Base:
             units=units,
             position_size=position_value,
         )
-
-        # Add to trades (will be active since not closed)
         self.trades[trade_id] = trade
-
-        # Update legacy position flag for backward compatibility
         self.position = True
 
-        msg = (
-            f"📈 [MULTI-ENTRY] [{self.__class__.__name__}] {self.symbol} {trade.entry_time} @ {entry_price:.2f} "
-            f"| Position: {position_value:.2f} | Units: {units:.6f} | Active trades: {len(self.active_trades)}"
-        )
+        self._log_multi_entry(trade, position_value)
+        return trade
 
+    def _log_multi_entry(self, trade: Trade, position_value: float) -> None:
+        """Log multiple position entry message"""
+        msg = (
+            f"📈 [MULTI-ENTRY] [{self.__class__.__name__}] {self.symbol} {trade.entry_time} @ {trade.entry_price:.2f} "
+            f"| Position: {position_value:.2f} | Units: {trade.units:.6f} | Active trades: {len(self.active_trades)}"
+        )
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
         if self.mode == Mode.LIVE:
             logger.info(msg)
             self.telegram_bot.send_telegram_message(msg)
 
-        return trade
-
     def _close_trade_and_record(
         self, trade: Trade, row: pd.Series, reason: str = "", next_row: pd.Series | None = None
     ) -> Trade:
-        """
-        Unified method to close a trade and record it in trade history.
-        Works for both single and multiple position modes.
-        Returns the closed Trade object.
-        """
-        # Determine execution price based on look-ahead bias setting
-        if self.use_next_candle_open and next_row is not None:
-            execution_price = next_row["open"]
-        else:
-            execution_price = row["close"]
-
-        exit_price = execution_price * (1 - self.slippage - self.commission)
+        """Close trade and update balance"""
+        execution_price = self._get_execution_price(row, next_row)
+        exit_price = self._calculate_exit_price(execution_price)
         exit_time = row.name
 
-        # Close the trade (this calculates PnL and other metrics)
         trade.close_trade(exit_time, exit_price, self.balance, reason)
-
-        # Trade is already in self.trades, just update balance
         self.balance += trade.pnl
 
         return trade
@@ -581,24 +768,23 @@ class Base:
     def _close_active_trade(
         self, trade_id: str, row: pd.Series, reason: str = "", next_row: pd.Series | None = None
     ) -> None:
-        """Close an active trade and record it in trade history"""
+        """Close an active trade in multiple position mode"""
         if trade_id not in self.trades or self.trades[trade_id].is_closed:
             return
 
         trade = self.trades[trade_id]
-
-        # Use unified close method
         closed_trade = self._close_trade_and_record(trade, row, reason, next_row)
-
-        # Update legacy position flag
         self.position = len(self.active_trades) > 0
 
+        self._log_multi_exit(closed_trade, reason)
+
+    def _log_multi_exit(self, closed_trade: Trade, reason: str) -> None:
+        """Log multiple position exit message"""
         msg = (
             f"📉 [MULTI-EXIT] [{self.__class__.__name__}] {self.symbol} {closed_trade.exit_time} @ {closed_trade.exit_price:.2f} "
             f"| PnL: ${closed_trade.pnl:.2f} | Return: {(closed_trade.return_pct * 100):.2f}% | Reason: {reason} "
             f"| Active trades: {len(self.active_trades)}"
         )
-
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
         if self.mode == Mode.LIVE:
