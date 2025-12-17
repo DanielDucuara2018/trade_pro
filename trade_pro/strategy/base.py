@@ -300,7 +300,6 @@ class Base:
             next_row = data.iloc[i + 1] if i + 1 < len(data) else None
 
             if self.allow_multiple_positions:
-                # Handle multiple positions
                 self._handle_multiple_positions(data, row, i, next_row)
             else:
                 # Legacy single position logic

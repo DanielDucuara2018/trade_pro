@@ -33,6 +33,11 @@ class MACDSlopeStrategy(Base):
         macd_fast: int,
         macd_slow: int,
         macd_signal: int,
+        atr_period: int = 14,
+        atr_stop_multiplier: float = 2.0,
+        risk_reward_ratio: float = 2.0,
+        use_atr_stops: bool = False,
+        early_exit_on_weakness: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -41,6 +46,11 @@ class MACDSlopeStrategy(Base):
         self.macd_fast = macd_fast
         self.macd_slow = macd_slow
         self.macd_signal = macd_signal
+        self.atr_period = atr_period
+        self.atr_stop_multiplier = atr_stop_multiplier
+        self.risk_reward_ratio = risk_reward_ratio
+        self.early_exit_on_weakness = early_exit_on_weakness
+        self.use_atr_stops = use_atr_stops
 
     def check_config(self) -> bool:
         return self.macd_fast < self.macd_slow
@@ -57,6 +67,9 @@ class MACDSlopeStrategy(Base):
             df["MACD"].diff() / df["MACD"].index.to_series().diff().dt.total_seconds()
         )
 
+        # Calculate ATR for stop loss calculation
+        df["ATR"] = ta.atr(df["high"], df["low"], df["close"], length=self.atr_period)
+
         return df
 
     def entry_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
@@ -72,13 +85,79 @@ class MACDSlopeStrategy(Base):
         )
 
     def exit_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
+        if not self.position:
+            return False
+
         row = df.iloc[index]
+
+        # Check stop loss and take profit first (strategy-specific logic)
+        if (
+            self.use_atr_stops
+            and hasattr(self, "_current_single_trade")
+            and self._current_single_trade
+        ):
+            trade = self._current_single_trade
+            current_price = row["close"]
+
+            # Stop loss check
+            if trade.stop_loss > 0 and current_price <= trade.stop_loss:
+                return True
+
+            # Take profit check
+            if trade.take_profit > 0 and current_price >= trade.take_profit:
+                return True
+
+        # Original exit: slope turns negative
         prev = df.iloc[index - 1]
         prev2 = df.iloc[index - 2]
 
-        return (
-            self.position
-            and prev2["MACD_slope"] > 0
-            and prev["MACD_slope"] > 0
-            and row["MACD_slope"] <= 0
+        original_exit = (
+            prev2["MACD_slope"] > 0 and prev["MACD_slope"] > 0 and row["MACD_slope"] <= 0
         )
+
+        # Early exit: exit on first sign of weakness (slope decreasing)
+        if self.early_exit_on_weakness:
+            # Exit if slope is decreasing for 2 consecutive bars
+            slope_weakening = (
+                prev2["MACD_slope"] > prev["MACD_slope"]
+                and prev["MACD_slope"] > row["MACD_slope"]
+                and row["MACD_slope"] > 0  # Still positive but weakening
+            )
+            if slope_weakening:
+                return True
+
+        return original_exit
+
+    def execute_entry(self, row: pd.Series, next_row: pd.Series | None = None):
+        """Override to add ATR-based stop loss and take profit"""
+        # Get ATR value for this candle
+        atr_value = row.get("ATR", 0)
+
+        # Call parent execute_entry to create the trade
+        entry_price, entry_time, units = super().execute_entry(row, next_row)
+
+        # Set stop loss and take profit if using ATR stops
+        if (
+            self.use_atr_stops
+            and atr_value > 0
+            and hasattr(self, "_current_single_trade")
+            and self._current_single_trade
+        ):
+            trade = self._current_single_trade
+
+            # Stop loss: entry_price - (ATR * multiplier)
+            trade.stop_loss = entry_price - (atr_value * self.atr_stop_multiplier)
+
+            # Take profit: entry_price + (ATR * multiplier * risk_reward_ratio)
+            trade.take_profit = entry_price + (
+                atr_value * self.atr_stop_multiplier * self.risk_reward_ratio
+            )
+
+            # Store in metadata for analysis
+            trade.metadata = {
+                "atr": atr_value,
+                "stop_distance": atr_value * self.atr_stop_multiplier,
+                "target_distance": atr_value * self.atr_stop_multiplier * self.risk_reward_ratio,
+            }
+
+        return entry_price, entry_time, units
