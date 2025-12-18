@@ -235,11 +235,12 @@ class Base:
 
         return self.entry_condition(df, index=index)
 
-    def should_exit_position(self, trade: Trade, df: pd.DataFrame, *, index: int = -1) -> bool:
+    def should_exit_position(
+        self, trade: Trade, df: pd.DataFrame, *, index: int = -1
+    ) -> tuple[bool, float | None, str]:
         """
         Determine if a specific position should be exited when multiple positions are allowed.
-        By default, uses the original exit_condition logic.
-        Override this method for custom per-trade exit logic.
+        Uses intra-candle logic to detect if SL/TP was hit within the candle's range.
 
         Args:
             trade: The active trade to evaluate
@@ -247,20 +248,78 @@ class Base:
             index: Current data index
 
         Returns:
-            bool: Whether to exit this specific position
+            tuple: (should_exit, exit_price, reason)
+                - should_exit: Whether to exit this position
+                - exit_price: Exact exit price if SL/TP hit, None for market exit
+                - reason: Exit reason ("Stop Loss", "Take Profit", "Exit Signal")
         """
         if not self.allow_multiple_positions:
-            return self.position and self.exit_condition(df, index=index)
+            return self.position and self.exit_condition(df, index=index), None, "Exit Signal"
 
-        # Check stop loss and take profit first
-        current_price = df.iloc[index]["close"]
-        if trade.stop_loss > 0 and current_price <= trade.stop_loss:
-            return True
-        if trade.take_profit > 0 and current_price >= trade.take_profit:
-            return True
+        current_candle = df.iloc[index]
+        candle_low = current_candle["low"]
+        candle_high = current_candle["high"]
+        candle_open = current_candle["open"]
+        candle_close = current_candle["close"]
 
-        # Use strategy's exit condition
-        return self.exit_condition(df, index=index)
+        # Check if stop loss is within candle range
+        sl_in_range = trade.stop_loss > 0 and candle_low <= trade.stop_loss <= candle_high
+        # Check if take profit is within candle range
+        tp_in_range = trade.take_profit > 0 and candle_low <= trade.take_profit <= candle_high
+
+        # If both in range, determine which was hit first based on candle direction
+        if sl_in_range and tp_in_range:
+            return self._determine_intracandle_priority(trade, candle_open, candle_close)
+
+        # Only stop loss in range
+        if sl_in_range:
+            return True, trade.stop_loss, "Stop Loss"
+
+        # Only take profit in range
+        if tp_in_range:
+            return True, trade.take_profit, "Take Profit"
+
+        # Use strategy's exit condition (market exit at close price)
+        if self.exit_condition(df, index=index):
+            return True, None, "Exit Signal"
+
+        return False, None, ""
+
+    def _determine_intracandle_priority(
+        self, trade: Trade, candle_open: float, candle_close: float
+    ) -> tuple[bool, float, str]:
+        """Determine which level (SL or TP) was hit first when both are in candle range
+
+        Args:
+            trade: Trade with stop_loss and take_profit set
+            candle_open: Candle opening price
+            candle_close: Candle closing price
+
+        Returns:
+            tuple: (True, exit_price, reason) for the level hit first
+        """
+        is_bullish = candle_close > candle_open
+
+        if is_bullish:
+            # Bullish candle: price went down first (to low), then up (to high)
+            # Stop loss (below entry) would be hit before take profit (above entry)
+            if trade.stop_loss < candle_open and trade.take_profit > candle_open:
+                return True, trade.stop_loss, "Stop Loss"
+            # If both on same side, hit the closer one first
+            elif abs(candle_open - trade.stop_loss) < abs(candle_open - trade.take_profit):
+                return True, trade.stop_loss, "Stop Loss"
+            else:
+                return True, trade.take_profit, "Take Profit"
+        else:
+            # Bearish candle: price went up first (to high), then down (to low)
+            # Take profit (above entry) would be hit before stop loss (below entry)
+            if trade.take_profit > candle_open and trade.stop_loss < candle_open:
+                return True, trade.take_profit, "Take Profit"
+            # If both on same side, hit the closer one first
+            elif abs(candle_open - trade.take_profit) < abs(candle_open - trade.stop_loss):
+                return True, trade.take_profit, "Take Profit"
+            else:
+                return True, trade.stop_loss, "Stop Loss"
 
     def run(self, mode: str) -> None:
         self.mode = mode
@@ -531,6 +590,13 @@ class Base:
         # Single position mode
         if self.entry_condition(data, index=index):
             return self.execute_entry(row, next_row)
+        elif self._current_single_trade:
+            # Check SL/TP and exit conditions for active trade
+            should_exit, exit_price, reason = self.should_exit_position(
+                self._current_single_trade, data, index=index
+            )
+            if should_exit:
+                self.execute_exit(row, entry_price, entry_time, units, next_row, exit_price, reason)
         elif self.exit_condition(data, index=index):
             self.execute_exit(row, entry_price, entry_time, units, next_row)
 
@@ -548,15 +614,31 @@ class Base:
     ) -> tuple[float, pd.Timestamp, float]:
         """Process exits only when circuit breaker is active (no new entries allowed)"""
         if self.allow_multiple_positions:
-            trades_to_close = [
-                trade_id
-                for trade_id, trade in self.active_trades.items()
-                if self.should_exit_position(trade, data, index=index)
-            ]
-            for trade_id in trades_to_close:
-                self._close_active_trade(trade_id, row, "Circuit breaker - exit only", next_row)
-        elif self.exit_condition(data, index=index):
-            self.execute_exit(row, entry_price, entry_time, units, next_row)
+            trades_to_close = []
+            for trade_id, trade in self.active_trades.items():
+                should_exit, exit_price, reason = self.should_exit_position(
+                    trade, data, index=index
+                )
+                if should_exit:
+                    trades_to_close.append((trade_id, exit_price, f"Circuit breaker - {reason}"))
+
+            for trade_id, exit_price, reason in trades_to_close:
+                self._close_active_trade(trade_id, row, reason, next_row, exit_price)
+        elif self._current_single_trade:
+            # Check SL/TP for single position mode
+            should_exit, exit_price, reason = self.should_exit_position(
+                self._current_single_trade, data, index=index
+            )
+            if should_exit:
+                self.execute_exit(
+                    row,
+                    entry_price,
+                    entry_time,
+                    units,
+                    next_row,
+                    exit_price,
+                    f"Circuit breaker - {reason}",
+                )
 
         return entry_price, entry_time, units
 
@@ -573,17 +655,9 @@ class Base:
 
         execution_price = self._get_execution_price(row, next_row)
         entry_price = self._calculate_entry_price(execution_price)
-
-        # Calculate position size (Phase 6: risk-based if enabled)
-        if self.risk_manager.use_risk_management and stop_loss > 0:
-            position_size = self.risk_manager.calculate_position_size(
-                entry_price, stop_loss, self.balance
-            )
-            units = position_size / entry_price
-        else:
-            units = self.balance / entry_price
-            position_size = units * entry_price
-
+        position_size, units = self._calculate_position_size_and_units(
+            entry_price, stop_loss, self.balance
+        )
         entry_time = row.name
 
         self._create_and_store_trade(entry_time, entry_price, units, position_size)
@@ -591,6 +665,25 @@ class Base:
         self._log_entry(entry_time, entry_price)
 
         return entry_price, entry_time, units
+
+    def _calculate_position_size_and_units(
+        self, entry_price: float, stop_loss: float, available_capital: float
+    ) -> tuple[float, float]:
+        """Calculate position size and units based on risk management settings
+
+        Returns:
+            tuple: (position_size, units)
+        """
+        if self.risk_manager.use_risk_management and stop_loss > 0:
+            position_size = self.risk_manager.calculate_position_size(
+                entry_price, stop_loss, available_capital
+            )
+            units = position_size / entry_price
+        else:
+            units = available_capital / entry_price
+            position_size = units * entry_price
+
+        return position_size, units
 
     def _get_execution_price(self, row: pd.Series, next_row: pd.Series | None) -> float:
         """Get realistic execution price based on settings"""
@@ -625,11 +718,7 @@ class Base:
         msg = (
             f"📈 [ENTRY] [{self.__class__.__name__}] {self.symbol} {entry_time} @ {entry_price:.2f}"
         )
-        if self.mode == Mode.BACKTEST:
-            logger.info(msg)
-        if self.mode == Mode.LIVE:
-            logger.info(msg)
-            self.telegram_bot.send_telegram_message(msg)
+        self._log_message(msg)
 
     def execute_exit(
         self,
@@ -638,8 +727,20 @@ class Base:
         entry_time: pd.Timestamp,
         units: float,
         next_row: pd.Series | None = None,
+        exit_price: float | None = None,
+        reason: str = "Exit condition met",
     ) -> None:
-        """Execute trade exit for single position mode"""
+        """Execute trade exit for single position mode
+
+        Args:
+            row: Current candle data
+            entry_price: Entry price of the trade
+            entry_time: Entry time of the trade
+            units: Number of units in the trade
+            next_row: Next candle data (for look-ahead bias fix)
+            exit_price: Exact exit price if SL/TP hit, None for market exit
+            reason: Exit reason
+        """
         if self.allow_multiple_positions:
             logger.warning(
                 "execute_exit called in multiple position mode - use _close_active_trade instead"
@@ -647,7 +748,7 @@ class Base:
             return
 
         trade = self._get_or_create_trade(entry_price, entry_time, units)
-        closed_trade = self._close_trade_and_record(trade, row, "Exit condition met", next_row)
+        closed_trade = self._close_trade_and_record(trade, row, reason, next_row, exit_price)
 
         self._current_single_trade = None
         self.position = False
@@ -710,18 +811,8 @@ class Base:
         self.win_rate = len(wins) / len(trade_list) if trade_list else 0
         self.profit_factor = total_wins / total_losses if total_losses != 0 else float("inf")
 
-        # Calculate drawdown using PnL values directly
-        pnl_values = [trade.pnl for trade in trade_list if trade.pnl is not None]
-        if pnl_values:
-            pnl_series = pd.Series(pnl_values)
-            cumulative_pnl = pnl_series.cumsum()
-            self.max_drawdown = (cumulative_pnl.cummax() - cumulative_pnl).max()
-
-            cumulative_balance = self.initial_balance + cumulative_pnl
-            self.max_balance_seen = cumulative_balance.max()
-        else:
-            self.max_drawdown = 0
-            self.max_balance_seen = self.initial_balance
+        # Calculate drawdown metrics
+        self._calculate_drawdown_metrics(trade_list)
 
         total_pnl = sum(trade.pnl for trade in trade_list if trade.pnl is not None)
 
@@ -738,15 +829,28 @@ class Base:
             "sharpe_like": sharpe_like,
         }
 
+    def _calculate_drawdown_metrics(self, trade_list: list[Trade]) -> None:
+        """Calculate max drawdown and max balance from trade history"""
+        pnl_values = [trade.pnl for trade in trade_list if trade.pnl is not None]
+        if pnl_values:
+            pnl_series = pd.Series(pnl_values)
+            cumulative_pnl = pnl_series.cumsum()
+            self.max_drawdown = (cumulative_pnl.cummax() - cumulative_pnl).max()
+
+            cumulative_balance = self.initial_balance + cumulative_pnl
+            self.max_balance_seen = cumulative_balance.max()
+        else:
+            self.max_drawdown = 0
+            self.max_balance_seen = self.initial_balance
+
     def _log_backtest_results(self, metrics: dict) -> None:
         """Log backtest results including trade summary and statistics"""
-        trade_list = metrics["trade_list"]
-        wins = metrics["wins"]
-        losses = metrics["losses"]
-        value_weighted_win_rate = metrics["value_weighted_win_rate"]
-        total_pnl = metrics["total_pnl"]
-        sharpe_like = metrics["sharpe_like"]
+        self._log_trade_summary(metrics["trade_list"])
+        self._log_performance_stats(metrics)
+        self._log_risk_management_stats()
 
+    def _log_trade_summary(self, trade_list: list[Trade]) -> None:
+        """Log individual trade details"""
         logger.info("\nTrade Summary:")
         for i, trade in enumerate(trade_list):
             logger.info(
@@ -754,6 +858,15 @@ class Base:
                 f"Entry: ${trade.entry_price:.2f} | Exit: ${trade.exit_price:.2f} | "
                 f"PnL: ${trade.pnl:.2f} | Return: {(trade.return_pct * 100):.2f}%"
             )
+
+    def _log_performance_stats(self, metrics: dict) -> None:
+        """Log overall performance statistics"""
+        trade_list = metrics["trade_list"]
+        wins = metrics["wins"]
+        losses = metrics["losses"]
+        value_weighted_win_rate = metrics["value_weighted_win_rate"]
+        total_pnl = metrics["total_pnl"]
+        sharpe_like = metrics["sharpe_like"]
 
         logger.info("\nStats:")
         logger.info(f"Total Trades: {len(trade_list)}")
@@ -770,7 +883,8 @@ class Base:
         logger.info(f"Total PnL: ${total_pnl:.2f}")
         logger.info(f"Final Balance: ${(self.balance):.2f}")
 
-        # Risk Management Metrics (Phase 6)
+    def _log_risk_management_stats(self) -> None:
+        """Log risk management metrics if enabled"""
         if self.risk_manager.use_risk_management:
             risk_metrics = self.get_risk_metrics()
             logger.info(f"Risk per Trade: {risk_metrics['risk_per_trade'] * 100:.2f}%")
@@ -803,12 +917,13 @@ class Base:
         # Check exits for all active trades
         trades_to_close = []
         for trade_id, trade in self.active_trades.items():
-            if self.should_exit_position(trade, data, index=index):
-                trades_to_close.append(trade_id)
+            should_exit, exit_price, reason = self.should_exit_position(trade, data, index=index)
+            if should_exit:
+                trades_to_close.append((trade_id, exit_price, reason))
 
         # Close trades that meet exit conditions
-        for trade_id in trades_to_close:
-            self._close_active_trade(trade_id, row, "Exit condition met", next_row)
+        for trade_id, exit_price, reason in trades_to_close:
+            self._close_active_trade(trade_id, row, reason, next_row, exit_price)
 
     def _execute_multiple_entry(
         self, row: pd.Series, next_row: pd.Series | None = None, stop_loss: float = 0
@@ -818,16 +933,9 @@ class Base:
         entry_price = self._calculate_entry_price(execution_price)
 
         available_balance = self._get_available_balance()
-
-        # Calculate position size
-        if self.risk_manager.use_risk_management and stop_loss > 0:
-            position_value = self.risk_manager.calculate_position_size(
-                entry_price, stop_loss, available_balance
-            )
-        else:
-            position_value = available_balance * self.risk_manager.position_size_pct
-
-        units = position_value / entry_price
+        position_value, units = self._calculate_position_size_and_units(
+            entry_price, stop_loss, available_balance
+        )
 
         trade_id = self._generate_trade_id(row.name, "multi")
         trade = Trade(
@@ -849,19 +957,34 @@ class Base:
             f"📈 [MULTI-ENTRY] [{self.__class__.__name__}] {self.symbol} {trade.entry_time} @ {trade.entry_price:.2f} "
             f"| Position: {position_value:.2f} | Units: {trade.units:.6f} | Active trades: {len(self.active_trades)}"
         )
-        if self.mode == Mode.BACKTEST:
-            logger.info(msg)
-        if self.mode == Mode.LIVE:
-            logger.info(msg)
-            self.telegram_bot.send_telegram_message(msg)
+        self._log_message(msg)
 
     def _close_trade_and_record(
-        self, trade: Trade, row: pd.Series, reason: str = "", next_row: pd.Series | None = None
+        self,
+        trade: Trade,
+        row: pd.Series,
+        reason: str = "",
+        next_row: pd.Series | None = None,
+        forced_exit_price: float | None = None,
     ) -> Trade:
-        """Close trade and update balance"""
-        execution_price = self._get_execution_price(row, next_row)
-        exit_price = self._calculate_exit_price(execution_price)
+        """Close trade and update balance
+
+        Args:
+            trade: Trade to close
+            row: Current candle data
+            reason: Reason for exit
+            next_row: Next candle data (for look-ahead bias fix)
+            forced_exit_price: Exact exit price for SL/TP (no slippage, only commission)
+        """
         exit_time = row.name
+
+        if forced_exit_price is not None:
+            # SL/TP execution: limit order at exact price (only commission, no slippage)
+            exit_price = forced_exit_price * (1 - self.commission)
+        else:
+            # Market exit: use close/open price with slippage and commission
+            execution_price = self._get_execution_price(row, next_row)
+            exit_price = self._calculate_exit_price(execution_price)
 
         trade.close_trade(exit_time, exit_price, self.balance, reason)
         self.balance += trade.pnl
@@ -869,14 +992,27 @@ class Base:
         return trade
 
     def _close_active_trade(
-        self, trade_id: str, row: pd.Series, reason: str = "", next_row: pd.Series | None = None
+        self,
+        trade_id: str,
+        row: pd.Series,
+        reason: str = "",
+        next_row: pd.Series | None = None,
+        exit_price: float | None = None,
     ) -> None:
-        """Close an active trade in multiple position mode"""
+        """Close an active trade in multiple position mode
+
+        Args:
+            trade_id: ID of trade to close
+            row: Current candle data
+            reason: Reason for exit
+            next_row: Next candle data (for look-ahead bias fix)
+            exit_price: Exact exit price if SL/TP hit, None for market exit
+        """
         if trade_id not in self.trades or self.trades[trade_id].is_closed:
             return
 
         trade = self.trades[trade_id]
-        closed_trade = self._close_trade_and_record(trade, row, reason, next_row)
+        closed_trade = self._close_trade_and_record(trade, row, reason, next_row, exit_price)
         self.position = len(self.active_trades) > 0
 
         self._log_multi_exit(closed_trade, reason)
@@ -888,9 +1024,13 @@ class Base:
             f"| PnL: ${closed_trade.pnl:.2f} | Return: {(closed_trade.return_pct * 100):.2f}% | Reason: {reason} "
             f"| Active trades: {len(self.active_trades)}"
         )
+        self._log_message(msg)
+
+    def _log_message(self, msg: str) -> None:
+        """Centralized logging for backtest and live modes"""
         if self.mode == Mode.BACKTEST:
             logger.info(msg)
-        if self.mode == Mode.LIVE:
+        elif self.mode == Mode.LIVE:
             logger.info(msg)
             self.telegram_bot.send_telegram_message(msg)
 

@@ -4,6 +4,8 @@ Complete guide to all configuration parameters for Trade Pro trading strategies.
 
 **Applies to:** All strategies (MACD Slope, MA Crossover, RSI, etc.)
 
+**Note:** Some features like ATR-based stops are strategy-specific. Check your strategy's implementation to see which features are available.
+
 ## Config File Structure
 
 ```json
@@ -149,19 +151,22 @@ Each strategy has its own technical indicator parameters that can be configured 
 
 > **Important:** Risk management has two components that work independently or together:
 >
-> 1. **ATR-Based Stops** (`use_atr_stops`): Dynamic stop-loss/take-profit placement based on market volatility
-> 2. **Position Sizing & Circuit Breakers** (`use_risk_management`): Automatic position sizing, daily loss limits, drawdown protection
+> 1. **ATR-Based Stops** (`use_atr_stops`): Dynamic stop-loss/take-profit placement based on market volatility _(strategy-specific feature)_
+> 2. **Position Sizing & Circuit Breakers** (`use_risk_management`): Automatic position sizing, daily loss limits, drawdown protection _(base class feature, works with all strategies)_
 >
-> **Best Practice:** Enable both for comprehensive risk control.
+> **Best Practice:** Enable both for comprehensive risk control (if your strategy supports ATR stops).
 
 #### ATR-Based Stops (Stop Placement)
+
+> **Strategy-Specific Feature:** ATR stops are implemented in specific strategies (e.g., MACD Slope). Check if your strategy supports this feature before using these parameters.
 
 **`use_atr_stops`** (boolean)
 
 - Enable ATR-based stop-loss and take-profit
 - Default: `false`
-- **Recommended: `true`**
+- **Recommended: `true` (if supported by your strategy)**
 - Works independently OR with `use_risk_management`
+- **Available in:** MACD Slope Strategy
 
 **`atr_period`** (number)
 

@@ -1,10 +1,10 @@
 import pandas as pd
 import pandas_ta as ta
 
-from trade_pro.strategy.base import Base
+from trade_pro.strategy.strategies.atr_strategy_base import ATRStrategyBase
 
 
-class MACDSlopeStrategy(Base):
+class MACDSlopeStrategy(ATRStrategyBase):
     """
     A MACD-based trading strategy using slope for exit signal.
 
@@ -110,60 +110,3 @@ class MACDSlopeStrategy(Base):
         prev2 = df.iloc[index - 2]
 
         return prev2["MACD_slope"] > 0 and prev["MACD_slope"] > 0 and row["MACD_slope"] <= 0
-
-    def execute_entry(self, row: pd.Series, next_row: pd.Series | None = None):
-        """Override to add ATR-based stop loss and take profit (Phase 6: risk-based sizing)"""
-        # Get ATR value and calculate stop loss BEFORE entry
-        atr_value = row.get("ATR", 0)
-        stop_loss_price = 0
-
-        if self.use_atr_stops and atr_value > 0:
-            # Get execution price to calculate stop loss
-            execution_price = self._get_execution_price(row, next_row)
-            entry_price_estimate = self._calculate_entry_price(execution_price)
-            stop_loss_price = entry_price_estimate - (atr_value * self.atr_stop_multiplier)
-
-            # Validate risk/reward ratio if using risk management
-            if self.risk_manager.use_risk_management:
-                take_profit_price = entry_price_estimate + (
-                    atr_value * self.atr_stop_multiplier * self.risk_reward_ratio
-                )
-                if not self._validate_trade_risk_reward(
-                    entry_price_estimate, stop_loss_price, take_profit_price
-                ):
-                    # R:R ratio doesn't meet minimum, skip this trade
-                    return self._init_single_position_vars()
-
-        # Call parent execute_entry with calculated stop loss for risk-based sizing
-        entry_price, entry_time, units = super().execute_entry(
-            row, next_row, stop_loss=stop_loss_price
-        )
-
-        # Set stop loss and take profit on the created trade
-        if (
-            self.use_atr_stops
-            and atr_value > 0
-            and hasattr(self, "_current_single_trade")
-            and self._current_single_trade
-        ):
-            trade = self._current_single_trade
-
-            # Stop loss: entry_price - (ATR * multiplier)
-            trade.stop_loss = entry_price - (atr_value * self.atr_stop_multiplier)
-
-            # Take profit: entry_price + (ATR * multiplier * risk_reward_ratio)
-            trade.take_profit = entry_price + (
-                atr_value * self.atr_stop_multiplier * self.risk_reward_ratio
-            )
-
-            # Store in metadata for analysis
-            trade.metadata = {
-                "atr": atr_value,
-                "stop_distance": atr_value * self.atr_stop_multiplier,
-                "target_distance": atr_value * self.atr_stop_multiplier * self.risk_reward_ratio,
-                "risk_per_trade_pct": self.risk_manager.risk_per_trade_pct
-                if self.risk_manager.use_risk_management
-                else None,
-            }
-
-        return entry_price, entry_time, units
