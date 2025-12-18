@@ -112,14 +112,34 @@ class MACDSlopeStrategy(Base):
         return prev2["MACD_slope"] > 0 and prev["MACD_slope"] > 0 and row["MACD_slope"] <= 0
 
     def execute_entry(self, row: pd.Series, next_row: pd.Series | None = None):
-        """Override to add ATR-based stop loss and take profit"""
-        # Get ATR value for this candle
+        """Override to add ATR-based stop loss and take profit (Phase 6: risk-based sizing)"""
+        # Get ATR value and calculate stop loss BEFORE entry
         atr_value = row.get("ATR", 0)
+        stop_loss_price = 0
 
-        # Call parent execute_entry to create the trade
-        entry_price, entry_time, units = super().execute_entry(row, next_row)
+        if self.use_atr_stops and atr_value > 0:
+            # Get execution price to calculate stop loss
+            execution_price = self._get_execution_price(row, next_row)
+            entry_price_estimate = self._calculate_entry_price(execution_price)
+            stop_loss_price = entry_price_estimate - (atr_value * self.atr_stop_multiplier)
 
-        # Set stop loss and take profit if using ATR stops
+            # Validate risk/reward ratio if using risk management
+            if self.risk_manager.use_risk_management:
+                take_profit_price = entry_price_estimate + (
+                    atr_value * self.atr_stop_multiplier * self.risk_reward_ratio
+                )
+                if not self._validate_trade_risk_reward(
+                    entry_price_estimate, stop_loss_price, take_profit_price
+                ):
+                    # R:R ratio doesn't meet minimum, skip this trade
+                    return self._init_single_position_vars()
+
+        # Call parent execute_entry with calculated stop loss for risk-based sizing
+        entry_price, entry_time, units = super().execute_entry(
+            row, next_row, stop_loss=stop_loss_price
+        )
+
+        # Set stop loss and take profit on the created trade
         if (
             self.use_atr_stops
             and atr_value > 0
@@ -141,6 +161,9 @@ class MACDSlopeStrategy(Base):
                 "atr": atr_value,
                 "stop_distance": atr_value * self.atr_stop_multiplier,
                 "target_distance": atr_value * self.atr_stop_multiplier * self.risk_reward_ratio,
+                "risk_per_trade_pct": self.risk_manager.risk_per_trade_pct
+                if self.risk_manager.use_risk_management
+                else None,
             }
 
         return entry_price, entry_time, units

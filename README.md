@@ -1,16 +1,34 @@
 # Trade Pro
 
-**Trade Pro** is a Python-based platform designed for launching trading bot strategies and performing backtesting. It facilitates the development, testing, and deployment of algorithmic trading strategies using a Dockerized environment.
+**Trade Pro** is a Python-based platform for algorithmic trading with professional-grade **risk management** and **modular architecture**. Built for backtesting, optimization, and live trading.
 
-## Features
+## ✨ Key Features
 
-- Execute automated trading strategies
-- Backtest strategies against historical data
-- Advanced strategy optimization with multiple scoring functions
-- Multiple built-in trading strategies
-- Dockerized setup for consistent development and deployment
-- Pre-commit hooks for code quality assurance
-- MongoDB integration for market data storage
+- **Risk Management** - Circuit breakers, risk-based position sizing, R:R validation
+- **Modular Architecture** - Separated risk management, optimization, and strategy execution
+- **Walk-Forward Optimization** - Find robust parameters across market conditions
+- **Multiple Strategies** - MACD Slope, MA crossover, and more
+- **Paper Trading** - Test with live data before risking real money
+- **Professional Tools** - ATR stops, commission/slippage modeling, look-ahead bias prevention
+
+📖 **[Complete Configuration Guide →](./docs/config_guide.md)**
+
+## 🏗️ Architecture
+
+```
+trade_pro/strategy/
+├── base.py              # Main strategy orchestrator
+├── risk_manager.py      # Risk management module
+├── optimization.py      # Walk-forward & standard optimization
+└── strategies/          # Trading strategies
+```
+
+**Modular Benefits:**
+
+- Clean separation of concerns
+- Easy to test and maintain
+- Reusable risk management
+- Extensible strategy framework
 
 ## Requirements
 
@@ -63,6 +81,81 @@ docker run --rm trade_pro run --mode backtest --name MASStrategy --config mas_st
 docker compose up -d mongo mongo-express
 docker compose run --rm trade_pro run --mode backtest --name MASStrategy --config mas_strategy_btcusdt
 ```
+
+## 🚀 Quick Start
+
+### Basic Backtest (No Risk Management)
+
+```bash
+python trade_pro/main.py run --mode backtest --name MACDSlopeStrategy \
+  --config macd_slope_strategy_phase6
+```
+
+### With Risk Management (Recommended)
+
+Configure in your JSON:
+
+```json
+{
+  "use_risk_management": true,
+  "risk_per_trade_pct": 0.02,
+  "max_daily_loss_pct": 0.05,
+  "max_drawdown_pct": 0.15,
+  "min_risk_reward_ratio": 2.0
+}
+```
+
+**Risk Profiles:**
+
+| Profile      | Risk/Trade | Max Daily Loss | Max Drawdown |
+| ------------ | ---------- | -------------- | ------------ |
+| Conservative | 1%         | 3%             | 10%          |
+| Moderate     | 2%         | 5%             | 15%          |
+| Aggressive   | 3%         | 8%             | 20%          |
+
+### Walk-Forward Optimization
+
+```bash
+python trade_pro/main.py optimization --mode walk-forward \
+  --name MACDSlopeStrategy --config macd_slope_strategy_phase6
+```
+
+## 📋 Essential Configuration
+
+**Symbol & Balance:**
+
+```json
+{
+  "symbol": "BTCUSDT",
+  "initial_balance": 2000,
+  "timeframe": "1d"
+}
+```
+
+**ATR-Based Stops:**
+
+```json
+{
+  "use_atr_stops": true,
+  "atr_stop_multiplier": 2.5,
+  "risk_reward_ratio": 3.0
+}
+```
+
+**Costs (Realistic Backtests):**
+
+```json
+{
+  "commission_pct": 0.001,
+  "slippage_pct": 0.0005
+}
+```
+
+## 📚 Documentation
+
+- **[Configuration Guide](./docs/config_guide.md)** - Complete reference for all 30+ configuration parameters
+- **[Multiple Positions](./docs/multiple_positions.md)** - Guide to managing concurrent trades with risk management
+- **[Scoring Functions](./docs/scoring_functions.md)** - Detailed explanation of optimization scoring methods
 
 ### 5. Fetch market data
 
@@ -127,7 +220,7 @@ Trade Pro includes several scoring functions for strategy optimization:
 - Sharpe/Sortino Scores: Standard risk-adjusted metrics
 - Consistency Score: Emphasizes stable returns
 
-See [Scoring Functions Documentation](docs/scoring_functions.md) for detailed explanations.
+See [Scoring Functions Documentation](./docs/scoring_functions.md) for detailed explanations.
 
 ## Project Structure
 

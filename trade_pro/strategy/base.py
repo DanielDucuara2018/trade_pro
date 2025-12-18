@@ -6,6 +6,7 @@ from enum import StrEnum
 import numpy as np
 import pandas as pd
 
+from trade_pro.strategy.risk_manager import RiskManager
 from trade_pro.strategy.utils import (
     fetch_candles,
     get_data,
@@ -104,6 +105,12 @@ class Base:
         walk_forward_train_size: int = 365,  # Days for training
         walk_forward_test_size: int = 90,  # Days for testing
         walk_forward_step: int = 90,  # Days to move forward each iteration
+        # Risk Management (Phase 6)
+        use_risk_management: bool = False,
+        risk_per_trade_pct: float = 0.02,  # 2% of capital at risk per trade
+        max_daily_loss_pct: float = 0.05,  # 5% max daily loss
+        max_drawdown_pct: float = 0.20,  # 20% max drawdown from peak
+        min_risk_reward_ratio: float = 1.5,  # Minimum R:R for trade entry
     ):
         self.symbol = symbol
         self.initial_balance = initial_balance
@@ -125,6 +132,17 @@ class Base:
         self.allow_multiple_positions = allow_multiple_positions
         self.max_concurrent_trades = max_concurrent_trades
         self.position_size_pct = position_size_pct  # Percentage of available balance per trade
+
+        # Risk Management (Phase 6)
+        self.risk_manager = RiskManager(
+            initial_balance=initial_balance,
+            use_risk_management=use_risk_management,
+            risk_per_trade_pct=risk_per_trade_pct,
+            max_daily_loss_pct=max_daily_loss_pct,
+            max_drawdown_pct=max_drawdown_pct,
+            min_risk_reward_ratio=min_risk_reward_ratio,
+            position_size_pct=position_size_pct,
+        )
 
         self.balance = self.initial_balance
         self.max_drawdown = 0
@@ -325,7 +343,7 @@ class Base:
 
         if len(self.trades) > 0:
             self.resume_backtest(self.trades)
-            self.generate_chart(self.symbol, data, self.trades)
+            self.generate_chart(self.symbol, data)
 
     def _run_walk_forward_backtest(self, data: pd.DataFrame) -> None:
         """Run rolling window validation test"""
@@ -335,7 +353,7 @@ class Base:
 
         if len(self.trades) > 0:
             self.resume_backtest(self.trades)
-            self.generate_chart(self.symbol, data, self.trades)
+            self.generate_chart(self.symbol, data)
 
     def _print_walk_forward_header(self) -> None:
         """Print walk-forward test header"""
@@ -478,6 +496,8 @@ class Base:
         self._trade_counter = 0
         self.max_drawdown = 0
         self.max_balance_seen = 0
+        # Reset risk management state
+        self.risk_manager.reset(self.initial_balance)
 
     def _init_single_position_vars(self) -> tuple[float, pd.Timestamp, float]:
         """Initialize single position mode variables"""
@@ -499,6 +519,11 @@ class Base:
         units: float,
     ) -> tuple[float, pd.Timestamp, float]:
         """Process single candle for entry/exit logic"""
+        if self._check_circuit_breakers(row.name):
+            return self._process_circuit_breaker_exits(
+                data, row, index, next_row, entry_price, entry_time, units
+            )
+
         if self.allow_multiple_positions:
             self._handle_multiple_positions(data, row, index, next_row)
             return entry_price, entry_time, units
@@ -511,20 +536,54 @@ class Base:
 
         return entry_price, entry_time, units
 
+    def _process_circuit_breaker_exits(
+        self,
+        data: pd.DataFrame,
+        row: pd.Series,
+        index: int,
+        next_row: pd.Series | None,
+        entry_price: float,
+        entry_time: pd.Timestamp,
+        units: float,
+    ) -> tuple[float, pd.Timestamp, float]:
+        """Process exits only when circuit breaker is active (no new entries allowed)"""
+        if self.allow_multiple_positions:
+            trades_to_close = [
+                trade_id
+                for trade_id, trade in self.active_trades.items()
+                if self.should_exit_position(trade, data, index=index)
+            ]
+            for trade_id in trades_to_close:
+                self._close_active_trade(trade_id, row, "Circuit breaker - exit only", next_row)
+        elif self.exit_condition(data, index=index):
+            self.execute_exit(row, entry_price, entry_time, units, next_row)
+
+        return entry_price, entry_time, units
+
     def execute_entry(
         self,
         row: pd.Series,
         next_row: pd.Series | None = None,
+        stop_loss: float = 0,
     ) -> tuple[float, pd.Timestamp, float]:
         """Execute trade entry for single position mode"""
         if self.allow_multiple_positions:
-            trade = self._execute_multiple_entry(row, next_row)
+            trade = self._execute_multiple_entry(row, next_row, stop_loss)
             return trade.entry_price, trade.entry_time, trade.units
 
         execution_price = self._get_execution_price(row, next_row)
         entry_price = self._calculate_entry_price(execution_price)
-        units = self.balance / entry_price
-        position_size = units * entry_price
+
+        # Calculate position size (Phase 6: risk-based if enabled)
+        if self.risk_manager.use_risk_management and stop_loss > 0:
+            position_size = self.risk_manager.calculate_position_size(
+                entry_price, stop_loss, self.balance
+            )
+            units = position_size / entry_price
+        else:
+            units = self.balance / entry_price
+            position_size = units * entry_price
+
         entry_time = row.name
 
         self._create_and_store_trade(entry_time, entry_price, units, position_size)
@@ -627,7 +686,15 @@ class Base:
                 self.telegram_bot.send_telegram_message(msg)
 
     def resume_backtest(self, trades: dict[str, Trade]):
-        # Performance Metrics using only completed trades
+        # Calculate performance metrics
+        metrics = self._calculate_performance_metrics()
+
+        # Log results
+        if self.mode == Mode.BACKTEST:
+            self._log_backtest_results(metrics)
+
+    def _calculate_performance_metrics(self) -> dict:
+        """Calculate all performance metrics from completed trades"""
         completed_trades = self.completed_trades
         trade_list = list(completed_trades.values())
         returns = [trade.return_pct for trade in trade_list if trade.return_pct is not None]
@@ -662,36 +729,62 @@ class Base:
         if len(returns) > 0:
             sharpe_like = np.mean(returns) / (np.std(returns) + 1e-9)  # avoid div by zero
 
-        if self.mode == Mode.BACKTEST:
-            logger.info("\nTrade Summary:")
-            # Create a simple summary table using Trade attributes
-            for i, trade in enumerate(trade_list):
-                logger.info(
-                    f"Trade {i + 1}: {trade.entry_time} -> {trade.exit_time} | "
-                    f"Entry: ${trade.entry_price:.2f} | Exit: ${trade.exit_price:.2f} | "
-                    f"PnL: ${trade.pnl:.2f} | Return: {(trade.return_pct * 100):.2f}%"
-                )
+        return {
+            "trade_list": trade_list,
+            "wins": wins,
+            "losses": losses,
+            "value_weighted_win_rate": value_weighted_win_rate,
+            "total_pnl": total_pnl,
+            "sharpe_like": sharpe_like,
+        }
 
-            logger.info("\nStats:")
-            logger.info(f"Total Trades: {len(trade_list)}")
-            logger.info(f"Win Trades: {len(wins)}")
-            logger.info(f"Lose Trades: {len(losses)}")
-            logger.info(f"Max win: ${max([trade.pnl for trade in wins], default=0):.2f}")
-            logger.info(f"Max lose: ${min([trade.pnl for trade in losses], default=0):.2f}")
-            logger.info(f"Win Rate (Count-Based): {(self.win_rate * 100):.2f}%")
-            logger.info(f"Win Rate (PnL-Weighted): {(value_weighted_win_rate * 100):.2f}%")
-            logger.info(f"Profit Factor: {self.profit_factor:.2f}")
-            logger.info(f"Sharpe-like Ratio (return_pct/std): {sharpe_like:.2f}")
-            logger.info(f"Max Drawdown: ${self.max_drawdown:.2f}")
-            logger.info(f"Max Balance Seen: ${self.max_balance_seen:.2f}")
-            logger.info(f"Total PnL: ${total_pnl:.2f}")
-            logger.info(f"Final Balance: ${(self.balance):.2f}")
+    def _log_backtest_results(self, metrics: dict) -> None:
+        """Log backtest results including trade summary and statistics"""
+        trade_list = metrics["trade_list"]
+        wins = metrics["wins"]
+        losses = metrics["losses"]
+        value_weighted_win_rate = metrics["value_weighted_win_rate"]
+        total_pnl = metrics["total_pnl"]
+        sharpe_like = metrics["sharpe_like"]
+
+        logger.info("\nTrade Summary:")
+        for i, trade in enumerate(trade_list):
+            logger.info(
+                f"Trade {i + 1}: {trade.entry_time} -> {trade.exit_time} | "
+                f"Entry: ${trade.entry_price:.2f} | Exit: ${trade.exit_price:.2f} | "
+                f"PnL: ${trade.pnl:.2f} | Return: {(trade.return_pct * 100):.2f}%"
+            )
+
+        logger.info("\nStats:")
+        logger.info(f"Total Trades: {len(trade_list)}")
+        logger.info(f"Win Trades: {len(wins)}")
+        logger.info(f"Lose Trades: {len(losses)}")
+        logger.info(f"Max win: ${max([trade.pnl for trade in wins], default=0):.2f}")
+        logger.info(f"Max lose: ${min([trade.pnl for trade in losses], default=0):.2f}")
+        logger.info(f"Win Rate (Count-Based): {(self.win_rate * 100):.2f}%")
+        logger.info(f"Win Rate (PnL-Weighted): {(value_weighted_win_rate * 100):.2f}%")
+        logger.info(f"Profit Factor: {self.profit_factor:.2f}")
+        logger.info(f"Sharpe-like Ratio (return_pct/std): {sharpe_like:.2f}")
+        logger.info(f"Max Drawdown: ${self.max_drawdown:.2f}")
+        logger.info(f"Max Balance Seen: ${self.max_balance_seen:.2f}")
+        logger.info(f"Total PnL: ${total_pnl:.2f}")
+        logger.info(f"Final Balance: ${(self.balance):.2f}")
+
+        # Risk Management Metrics (Phase 6)
+        if self.risk_manager.use_risk_management:
+            risk_metrics = self.get_risk_metrics()
+            logger.info(f"Risk per Trade: {risk_metrics['risk_per_trade'] * 100:.2f}%")
+            logger.info(f"Min Risk/Reward Ratio: {risk_metrics['min_risk_reward']:.2f}")
+            logger.info(f"Max Daily Loss Limit: {risk_metrics['daily_loss_limit'] * 100:.2f}%")
+            logger.info(f"Max Drawdown Limit: {risk_metrics['drawdown_limit'] * 100:.2f}%")
+            logger.info(
+                f"Circuit Breaker Triggered: {'Yes' if risk_metrics['circuit_breaker_active'] else 'No'}"
+            )
 
     def generate_chart(
         self,
         symbol: str,
         df: pd.DataFrame,
-        trades: dict[str, Trade],
     ):
         if self.mode == Mode.BACKTEST:
             # Pass completed trades to chart functions
@@ -717,13 +810,23 @@ class Base:
         for trade_id in trades_to_close:
             self._close_active_trade(trade_id, row, "Exit condition met", next_row)
 
-    def _execute_multiple_entry(self, row: pd.Series, next_row: pd.Series | None = None) -> Trade:
+    def _execute_multiple_entry(
+        self, row: pd.Series, next_row: pd.Series | None = None, stop_loss: float = 0
+    ) -> Trade:
         """Execute entry for multiple position mode"""
         execution_price = self._get_execution_price(row, next_row)
         entry_price = self._calculate_entry_price(execution_price)
 
         available_balance = self._get_available_balance()
-        position_value = available_balance * self.position_size_pct
+
+        # Calculate position size
+        if self.risk_manager.use_risk_management and stop_loss > 0:
+            position_value = self.risk_manager.calculate_position_size(
+                entry_price, stop_loss, available_balance
+            )
+        else:
+            position_value = available_balance * self.risk_manager.position_size_pct
+
         units = position_value / entry_price
 
         trade_id = self._generate_trade_id(row.name, "multi")
@@ -802,6 +905,30 @@ class Base:
         # Available balance is current balance minus what's locked
         # Note: Current balance already includes unrealized PnL from price movements
         return max(0, self.balance - locked_value)
+
+    def _check_circuit_breakers(self, current_time: pd.Timestamp) -> bool:
+        """Check if circuit breakers have been triggered"""
+        return self.risk_manager.check_circuit_breakers(
+            current_time, self.balance, self.mode, self.telegram_bot
+        )
+
+    def _calculate_risk_based_position_size(
+        self, entry_price: float, stop_loss_price: float, available_capital: float
+    ) -> float:
+        """Calculate position size based on risk per trade (Phase 6)"""
+        return self.risk_manager.calculate_position_size(
+            entry_price, stop_loss_price, available_capital
+        )
+
+    def _validate_trade_risk_reward(
+        self, entry_price: float, stop_loss: float, take_profit: float
+    ) -> bool:
+        """Validate trade meets minimum risk/reward ratio (Phase 6)"""
+        return self.risk_manager.validate_risk_reward(entry_price, stop_loss, take_profit)
+
+    def get_risk_metrics(self) -> dict:
+        """Get current risk management metrics (Phase 6)"""
+        return self.risk_manager.get_metrics(self.balance)
 
     def get_active_trades_summary(self) -> dict:
         """Get summary of active trades for monitoring"""
