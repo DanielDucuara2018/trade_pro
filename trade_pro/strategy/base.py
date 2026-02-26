@@ -1,4 +1,5 @@
 import logging
+import os
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -335,7 +336,10 @@ class Base:
         if self.mode == Mode.BACKTEST or self.mode == Mode.OPTIMIZATION:
             self.backtest(data)
         elif self.mode == Mode.LIVE:
-            self.telegram_bot = TelegramBot(bot_token="your_token", chat_id="your_chat_id")
+            self.telegram_bot = TelegramBot(
+                bot_token=os.environ.get("TRADE_PRO_TELEGRAM_BOT_TOKEN_ENV"),
+                chat_id=os.environ.get("TRADE_PRO_TELEGRAM_CHAT_ID_ENV"),
+            )
             self.telegram_bot.send_telegram_message(
                 f"[{self.__class__.__name__}] Starting live trade"
             )
