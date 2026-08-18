@@ -1,0 +1,65 @@
+{
+    "strategy": {
+        "symbol": "BTCUSDT",
+        "initial_balance": 10000,
+        "timeframes": ["1d"],
+        "start_backtest_index": 0,
+        "commission": 0.001,
+        "slippage": 0.002,
+        "use_next_candle_open": true,
+        "start_live_index": -1,
+        "use_atr_stops": true,
+        "atr_period": 14,
+        "macd_fast": 14,
+        "macd_slow": 28,
+        "macd_signal": 8,
+        "atr_stop_multiplier": 1.5,
+        "risk_reward_ratio": 4.0,
+        "allow_multiple_positions": false,
+        "position_size_pct": 0.95,
+        "use_risk_management": true,
+        "risk_per_trade_pct": 0.02,
+        "max_daily_loss_pct": 0.05,
+        "max_drawdown_pct": 0.15,
+        "min_risk_reward_ratio": 2.0
+    },
+    "optimization": {
+        "score_method": "basic",
+        "n_trials": 100,
+        "n_jobs": 1,
+        "variables": {
+            "macd_fast": {
+                "low": 8,
+                "high": 16,
+                "step": 1
+            },
+            "macd_slow": {
+                "low": 20,
+                "high": 32,
+                "step": 1
+            },
+            "macd_signal": {
+                "low": 6,
+                "high": 12,
+                "step": 1
+            },
+            "atr_stop_multiplier": {
+                "low": 1.5,
+                "high": 3.0,
+                "step": 0.25
+            },
+            "risk_reward_ratio": {
+                "low": 2.0,
+                "high": 4.0,
+                "step": 0.5
+            }
+        },
+        "walk_forward": {
+            "train_size": 365,
+            "test_size": 90,
+            "step": 90,
+            "min_trades": 3,
+            "min_test_ratio": 0.5
+        }
+    }
+}

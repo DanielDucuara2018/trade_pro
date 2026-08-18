@@ -1,0 +1,25 @@
+{
+    "strategy": {
+        "symbol": "BTCUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1d"],
+        "start_backtest_index": 50,
+        "commission": 0.001,
+        "slippage": 0.002,
+        "use_next_candle_open": true,
+        "use_atr_stops": true,
+        "atr_period": 14
+    },
+    "optimization": {
+        "variables": {
+            "macd_fast": {"low": 12, "high": 16},
+            "macd_slow": {"low": 24, "high": 28},
+            "macd_signal": {"low": 8, "high": 10},
+            "atr_stop_multiplier": {"low": 1.5, "high": 2.5},
+            "risk_reward_ratio": {"low": 2.5, "high": 3.5}
+        },
+        "score_method": "basic",
+        "n_trials": 15,
+        "n_jobs": 1
+    }
+}
