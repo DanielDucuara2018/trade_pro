@@ -358,13 +358,36 @@ class Base:
             historical_buffer = self._fetch_latest_data(historical_buffer)
             data = self.compute_indicators(historical_buffer)
             row = data.iloc[self.start_live_index]
+            next_row = self._get_live_next_row(data)
 
             logger.info(f"[{self.__class__.__name__}] Running entry/exit condition")
             entry_price, entry_time, units = self._process_candle(
-                data, row, self.start_live_index, None, entry_price, entry_time, units
+                data, row, self.start_live_index, next_row, entry_price, entry_time, units
             )
 
             wait_for_next_candle(timeframe=self.timeframes[0])
+
+    def _get_live_next_row(self, data: pd.DataFrame) -> pd.Series | None:
+        """The candle immediately after the one live decisions are made on
+        (self.start_live_index), if it has already been fetched.
+
+        Without this, use_next_candle_open was a silent no-op in live trading —
+        _get_execution_price only applies it when next_row is not None, and this
+        was previously always passed as None. The "next" candle's open price is
+        known as soon as that candle starts (even before it closes), so it's
+        safe to use here as long as it has actually been fetched. Returns None
+        when start_live_index already points at the most recently fetched
+        candle (there's nothing "next" yet).
+        """
+        absolute_index = (
+            self.start_live_index
+            if self.start_live_index >= 0
+            else len(data) + self.start_live_index
+        )
+        next_index = absolute_index + 1
+        if next_index >= len(data):
+            return None
+        return data.iloc[next_index]
 
     def _fetch_latest_data(
         self, historical_buffer: dict[str, pd.DataFrame]
@@ -880,7 +903,8 @@ class Base:
             logger.info(
                 f"Trade {i + 1}: {trade.entry_time} -> {trade.exit_time} | "
                 f"Entry: ${trade.entry_price:.2f} | Exit: ${trade.exit_price:.2f} | "
-                f"PnL: ${trade.pnl:.2f} | Return: {(trade.return_pct * 100):.2f}%"
+                f"PnL: ${trade.pnl:.2f} | Return: {(trade.return_pct * 100):.2f}% | "
+                f"Reason: {trade.reason or 'n/a'}"
             )
 
     def _log_performance_stats(self, metrics: dict) -> None:

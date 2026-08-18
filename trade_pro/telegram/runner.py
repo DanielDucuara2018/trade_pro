@@ -38,8 +38,17 @@ class TelegramBot:
         return response.json()
 
     def send_telegram_message(self, message: str) -> None:
+        """Best-effort notification. A failure here (network blip, rate limit,
+        bad/missing token) must never take down the caller — for live trading
+        in particular, a notification going out is not part of the trading
+        decision itself, so this only logs a warning rather than raising.
+        """
         payload = {"chat_id": self.chat_id, "text": message, "parse_mode": "Markdown"}
-        response = self._request("sendMessage", body=payload)
+        try:
+            response = self._request("sendMessage", body=payload)
+        except (httpx.HTTPError, ConnectionError) as e:
+            logger.warning("Failed to send Telegram message: %s", e)
+            return
         logger.info("sendMessage bot response %s", response)
 
     def send_get_updates(self) -> None:
