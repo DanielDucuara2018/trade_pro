@@ -17,6 +17,16 @@ logger = logging.getLogger(__name__)
 # TODO see if geometric average could be useful to optimize
 
 
+def _get_trade_returns(strategy: Base) -> list[float]:
+    """Return each closed trade's return_pct.
+
+    strategy.trades is a dict[str, Trade] keyed by trade id — iterating it
+    directly (`for t in strategy.trades`) yields the string keys, not Trade
+    objects. Every scoring function below needs the actual Trade objects.
+    """
+    return [t.return_pct for t in strategy.trades.values() if t.return_pct is not None]
+
+
 # --- Scoring Methods ---
 def score_basic(strategy: Base) -> float:
     """
@@ -111,7 +121,7 @@ def score_risk_adjusted(strategy: Base) -> float:
     if len(strategy.trades) < 2 or strategy.balance <= 0:
         return -float("inf")
 
-    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    returns = _get_trade_returns(strategy)
     std_return = np.std(returns) if returns else 1e-6
     mean_return = np.mean(returns) if returns else 0
     drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
@@ -139,12 +149,12 @@ def score_risk_reward(strategy: Base, min_trades: int = 10) -> float:
         float: Risk-reward score. Returns -1.0 if not enough trades or no valid wins/losses.
     """
     # TODO improve this score
-    trades = strategy.trades
+    trades = list(strategy.trades.values())
     if len(trades) < min_trades:
         return -1.0
 
-    win_pcts = [t["return_pct"] for t in trades if t["return_pct"] > 0]
-    loss_pcts = [-t["return_pct"] for t in trades if t["return_pct"] < 0]
+    win_pcts = [t.return_pct for t in trades if t.return_pct is not None and t.return_pct > 0]
+    loss_pcts = [-t.return_pct for t in trades if t.return_pct is not None and t.return_pct < 0]
 
     if not win_pcts or not loss_pcts:
         return -1.0
@@ -193,13 +203,13 @@ def score_geometric_mean(strategy: Base) -> float:
     if len(strategy.trades) < 2 or strategy.balance <= 0:
         return -float("inf")
 
-    multipliers = [1 + t["return_pct"] for t in strategy.trades if "return_pct" in t]
-    if any(m <= 0 for m in multipliers):
+    returns = _get_trade_returns(strategy)
+    multipliers = [1 + r for r in returns]
+    if not multipliers or any(m <= 0 for m in multipliers):
         return -float("inf")
 
     geo_mean = np.prod(multipliers) ** (1 / len(multipliers)) - 1
     drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
-    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
     skewness = (np.mean(returns) - np.median(returns)) if returns else 0
 
     return (
@@ -214,7 +224,7 @@ def score_sharpe(strategy: Base) -> float:
     """
     Sharpe ratio-based score.
     """
-    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    returns = _get_trade_returns(strategy)
     if len(returns) < 2 or strategy.balance <= 0:
         return -float("inf")
     mean_return = np.mean(returns)
@@ -229,11 +239,15 @@ def score_sortino(strategy: Base) -> float:
     """
     Sortino ratio-based score.
     """
-    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    returns = _get_trade_returns(strategy)
     if len(returns) < 2 or strategy.balance <= 0:
         return -float("inf")
     downside_returns = [r for r in returns if r < 0]
     std_downside = np.std(downside_returns) if downside_returns else 1e-6
+    if std_downside == 0:
+        # No variance among losing trades (e.g. every loss identical, or a
+        # single losing trade) — avoid a divide-by-zero blowing up to ±inf.
+        return -float("inf")
     mean_return = np.mean(returns)
     drawdown_pct = strategy.max_drawdown / strategy.max_balance_seen
     return (mean_return / std_downside) * 1000 - drawdown_pct * 100
@@ -243,7 +257,7 @@ def score_consistency(strategy: Base) -> float:
     """
     Rewards low volatility and high win rate.
     """
-    returns = [t["return_pct"] for t in strategy.trades if "return_pct" in t]
+    returns = _get_trade_returns(strategy)
     if len(returns) < 2 or strategy.balance <= 0:
         return -float("inf")
     std_return = np.std(returns)
@@ -379,6 +393,8 @@ def _create_train_objective(
 
         strategy_config = config["strategy"] | optimization_values
         strategy_config["start_backtest_index"] = current_start
+        # Bound the backtest to the training window itself
+        strategy_config["end_backtest_index"] = train_end
         strategy_instance = cls(**strategy_config)
         strategy_instance.run(Mode.OPTIMIZATION)
 
@@ -449,6 +465,8 @@ def _validate_on_test_window(
     logger.info("\nTesting on out-of-sample window...")
     test_config = config["strategy"] | best_params
     test_config["start_backtest_index"] = test_start
+    # Bound the backtest to the test window itself
+    test_config["end_backtest_index"] = test_end
     test_strategy = cls(**test_config)
     test_strategy.run(Mode.OPTIMIZATION)
 

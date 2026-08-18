@@ -97,6 +97,8 @@ class Base:
         commission: float = 0.0004,
         slippage: float = 0.0005,
         start_backtest_index: int = 0,
+        end_backtest_index: int
+        | None = None,  # Bound a simple backtest to a window (e.g. optimization)
         start_live_index: int = -2,
         allow_multiple_positions: bool = False,
         max_concurrent_trades: int = 3,
@@ -120,6 +122,7 @@ class Base:
         self.commission = commission
         self.slippage = slippage
         self.start_backtest_index = start_backtest_index
+        self.end_backtest_index = end_backtest_index
         self.start_live_index = start_live_index
         self.use_next_candle_open = use_next_candle_open
 
@@ -385,22 +388,27 @@ class Base:
             self._run_simple_backtest(data)
 
     def _run_simple_backtest(self, data: pd.DataFrame) -> None:
-        """Traditional backtest on entire dataset"""
+        """Traditional backtest on entire dataset, or a bounded [start, end)
+        window when end_backtest_index is set (used by optimization to keep a
+        train/test window's own trades and balance from bleeding into data
+        beyond that window)."""
         entry_price, entry_time, units = self._init_single_position_vars()
+        end_index = self.end_backtest_index if self.end_backtest_index is not None else len(data)
 
-        for i in range(self.start_backtest_index, len(data)):
+        for i in range(self.start_backtest_index, end_index):
             row = data.iloc[i]
             next_row = data.iloc[i + 1] if i + 1 < len(data) else None
             entry_price, entry_time, units = self._process_candle(
                 data, row, i, next_row, entry_price, entry_time, units
             )
 
-        self._finalize_backtest(data)
+        self._finalize_backtest(data, end_index)
 
-    def _finalize_backtest(self, data: pd.DataFrame) -> None:
+    def _finalize_backtest(self, data: pd.DataFrame, end_index: int | None = None) -> None:
         """Close remaining trades and generate reports"""
+        final_index = (end_index if end_index is not None else len(data)) - 1
         if self.allow_multiple_positions and self.active_trades:
-            final_row = data.iloc[-1]
+            final_row = data.iloc[final_index]
             for trade_id in list(self.active_trades.keys()):
                 self._close_active_trade(trade_id, final_row, "End of backtest")
 
