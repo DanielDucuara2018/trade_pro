@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import ccxt
-import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib import colormaps
 
 if TYPE_CHECKING:
     from trade_pro.strategy.base import Trade
@@ -135,7 +135,7 @@ def plot_price_chart(
     trade_list = list(trades.values())
 
     # Use a colormap to differentiate trades
-    cmap = cm.get_cmap("tab20", len(trade_list))  # tab20 or any other colormap
+    cmap = colormaps["tab20"].resampled(len(trade_list))  # tab20 or any other colormap
     for i, trade in enumerate(trade_list):
         entry_time = trade.entry_time
         exit_time = trade.exit_time
