@@ -157,6 +157,7 @@ class Base:
         self._current_single_trade: Trade | None = None  # Current trade for single position mode
         self.mode = None
         self.telegram_bot = None
+        self.run_label: str | None = None
         self._trade_counter = 0  # Counter for unique trade IDs
 
     @property
@@ -951,8 +952,9 @@ class Base:
         if self.mode == Mode.BACKTEST:
             # Pass completed trades to chart functions
             completed_trades = self.completed_trades
-            plot_price_chart(symbol, self.__class__.__name__, df, completed_trades)
-            plot_equity_curve(symbol, self.__class__.__name__, completed_trades)
+            label = self.run_label or self.__class__.__name__
+            plot_price_chart(symbol, label, df, completed_trades)
+            plot_equity_curve(symbol, label, completed_trades)
 
     def _handle_multiple_positions(
         self, data: pd.DataFrame, row: pd.Series, index: int, next_row: pd.Series | None = None

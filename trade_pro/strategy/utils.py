@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import colormaps
 
+from trade_pro.utils import check_env_vars
+
 if TYPE_CHECKING:
     from trade_pro.strategy.base import Trade
 
@@ -88,10 +90,72 @@ def get_data(symbol: str, timeframe: str) -> pd.DataFrame:
     return df.drop_duplicates()
 
 
+def check_env_vars_before_fetch() -> None:
+    """Log the status of every environment variable the codebase references,
+    before running a fetch.
+
+    This fetches from Binance's public, unauthenticated OHLCV endpoint — it
+    needs no Binance API key/secret, and a scan of the codebase confirms no
+    such variable is referenced anywhere (`find_referenced_env_vars` finds
+    none containing "BINANCE"). It still checks and logs the vars the
+    codebase *does* use (currently the Telegram ones, needed for live
+    trading) so missing configuration is visible upfront rather than
+    discovered mid-run of some other command.
+    """
+    env_status = check_env_vars()
+    binance_vars = [name for name in env_status if "BINANCE" in name]
+    logger.info(
+        "Binance data fetch uses ccxt's public endpoint — no API key/secret required "
+        "(found %d Binance-related env var(s) referenced in the codebase: %s)",
+        len(binance_vars),
+        binance_vars or "none",
+    )
+
+    if not env_status:
+        return
+
+    missing = [name for name, is_set in env_status.items() if not is_set]
+    for name, is_set in env_status.items():
+        logger.info("Env var %s: %s", name, "OK" if is_set else "MISSING")
+
+    if missing:
+        logger.warning(
+            "Missing environment variable(s): %s. Not required to fetch data, but used "
+            "elsewhere in trade_pro (e.g. live-mode Telegram notifications) — set them "
+            "before running any command that needs them.",
+            ", ".join(missing),
+        )
+
+
 def fetch_data(
     symbol: str, timeframe: str, start_date: pd.Timestamp, end_date: pd.Timestamp
 ) -> None:
+    """Fetch OHLCV history for symbol/timeframe and write it to
+    trade_pro/strategy/data/. If a local file already exists for this
+    symbol/timeframe, only the gap since its last candle is fetched from
+    Binance and merged in — this previously re-fetched (and overwrote) the
+    entire range from start_date every time, which was wasteful and, worse,
+    would have silently discarded any local history older than start_date.
+    """
+    check_env_vars_before_fetch()
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    csv_path = DATA_DIR.joinpath(f"{symbol.replace('/', '')}_{timeframe}.csv")
+
+    existing_df = None
+    if csv_path.exists():
+        existing_df = get_data(symbol, timeframe)
+        if not existing_df.empty:
+            last_existing = existing_df.index.max()
+            if start_date < last_existing:
+                logger.info(
+                    "Existing data for %s %s already goes up to %s — fetching only the gap "
+                    "since then instead of re-fetching the whole range",
+                    symbol,
+                    timeframe,
+                    last_existing,
+                )
+                start_date = last_existing
 
     ohlcv = []
     limit = 1000
@@ -102,13 +166,22 @@ def fetch_data(
         )
         start_date += pd.Timedelta(1000, timeframe[-1])
 
+    if not ohlcv:
+        logger.info("No new candles to fetch for %s %s", symbol, timeframe)
+        return
+
     df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     df.set_index("timestamp", inplace=True)
     df = df.drop_duplicates()
     if df.index.duplicated().any():
         print(f"There are duplicated dates {df[df.index.duplicated()]}")
-    df.to_csv(DATA_DIR.joinpath(f"{symbol.replace('/', '')}_{timeframe}.csv"))
+
+    if existing_df is not None and not existing_df.empty:
+        df = update_data(existing_df, df)
+
+    logger.info("Writing %d candles for %s %s to %s", len(df), symbol, timeframe, csv_path)
+    df.to_csv(csv_path)
 
 
 def load_strategy_config(file_name: str) -> dict[str, Any]:
