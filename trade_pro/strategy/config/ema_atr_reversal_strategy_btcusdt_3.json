@@ -1,0 +1,20 @@
+{
+    "strategy":{
+        "symbol": "BTCUSDT",
+        "initial_balance": 2000,
+        "timeframes": ["1d"],
+        "start_backtest_index": 3,
+        "ema_period": 28,
+        "atr_period": 9,
+        "atr_multiplier": 1.6290565687408909
+    },
+    "optimization": {
+        "variables":{
+            "ema_period" : {"low": 20, "high": 100},
+            "atr_period" : {"low": 5, "high": 50},
+            "atr_multiplier" : {"low": 0.5, "high": 4.5}
+        },
+        "score_method": "basic",
+        "n_trials": 1000
+    }
+}

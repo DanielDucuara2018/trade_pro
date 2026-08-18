@@ -1,359 +1,234 @@
 # Strategy Backtest Results
 
+## ⚠️ These results supersede the previous version of this file
+
+The previous ranking in this file was generated **before** a round of bug
+fixes to the backtesting engine (`trade_pro/strategy/base.py`,
+`optimization.py`, and several strategy files). Three of those bugs directly
+inflated the numbers before that:
+
+1. **Position sizing ignored `position_size_pct`** whenever risk management
+   was off — every trade deployed 100% of the account, turning a modest edge
+   into unrealistic compounding.
+2. **Look-ahead bias** in `MASStrategy`/`VolumeMASStrategy` (the daily trend
+   filter leaked each day's own close into that same day's hourly candles)
+   and in `VWAPStrategy` (a "yesterday's VWAP" constant computed from near
+   the end of the whole dataset). Both inflated win rate and PnL.
+3. **Stop-losses were never actually checked** in single-position mode for
+   ATR-stop strategies (`RSIStrategy`, `MACDStrategy`, `BollingerBandsStrategy`,
+   `MACrossoverStrategy`) — losses could run far past their configured risk cap.
+
+This version is a **second, independent re-run** on top of that fixed code,
+after two more changes:
+
+- **Market data was refreshed from Binance** (`python trade_pro/main.py
+  fetch`) — every symbol/timeframe now has history through 2026-08-18, not
+  just through 2025-08-12 as before. Numbers below reflect roughly a year of
+  additional real market data per symbol.
+- **Chart files no longer collide.** `Base.generate_chart()` used to name
+  its PNG output `{symbol}_{class_name}_*.png`. Several strategies —
+  `MASStrategy` alone ships 8 different parameter sets — reuse the same
+  class + symbol, so every config was silently overwriting the previous
+  one's saved chart on disk; only the last-run config's chart ever survived.
+  Charts are now named per config (`{symbol}_{config_name}_*.png`), and a
+  regression test (`tests/test_strategy_configs.py`) asserts every config
+  produces its own distinct, freshly-generated image.
+
+All numbers below are from that fresh run: real BTC/ETH/LINK/SOL history
+through 2026-08-18, real commission + slippage, current code. They are
+still not "safe to trade live" numbers — see caveats below.
+
 ## Testing Environment
 
-- **Test Period**: 2017-01-01 to 2025-06-13
-- **Initial Capital**: $2,000
-- **Trading Fees**: 0.1% per trade
-- **Data Source**: Binance historical data
-- **Test Environment**: Trade Pro Backtesting Engine
+- **Test period**: full available history per symbol (~2017/2018 →
+  2026-08-18), hourly or daily candles depending on the strategy
+- **Data source**: Binance historical data, fetched via
+  `python trade_pro/main.py fetch` (public endpoint — confirmed to need no
+  API key/secret; see `check_env_vars_before_fetch` in
+  `trade_pro/strategy/utils.py`)
+- **Costs**: each config's own commission/slippage settings (typically
+  0.04–0.1% commission, 0.05–0.1% slippage per side)
+- **Engine**: Trade Pro backtesting engine, post-fix (see git history)
 
-## Performance Categories
+## ⚠️ Read this before trusting the ranking
 
-🏆 **Elite Performers** (Profit Factor > 3.0, Sharpe > 0.4)
+- **Return % is not fully comparable across strategies.** Most of these
+  configs don't set `use_risk_management`/`position_size_pct`, so they
+  compound at 100% of the account on every trade — a strategy with 300
+  trades will show a wildly larger `return_pct` than an equally-good
+  strategy with 40 trades purely from compounding *more often*, not from a
+  better per-trade edge. Treat `return_pct` as descriptive, not as the
+  ranking criterion.
+- **Statistical significance matters.** Several configs traded fewer than 20
+  times over 7–8 years of history. A 41x profit factor on 13 trades is not
+  evidence of an edge — it's a small sample that hasn't been contradicted
+  yet. These are listed separately, not ranked alongside the rest.
+- **This is still a backtest**, with a same-candle-close fill assumption
+  for strategies that don't set `use_next_candle_open: true`, and no
+  liquidity/market-impact modeling for large compounded position sizes.
+  Nothing here should be read as "this will make money live."
+- **Numbers moved compared to the previous run**, sometimes a lot (e.g.
+  `macd_slope_strategy_solusdt`'s profit factor went from 3.95 → 1.84 with
+  ~11 more trades of fresh data). That swing on its own is informative: a
+  config whose headline metric is that sensitive to one extra year of
+  history was riding on a thin sample, which is exactly why the
+  significance gate below exists.
 
-- Stochastic BTC Strategy
-- MACD Slope SOL Strategy
-- MAS BTC Strategy v2
+### Ranking methodology
 
-⭐ **Strong Performers** (Profit Factor > 2.0, Sharpe > 0.3)
+Strategies with **≥ 20 closed trades** are ranked by a composite score that
+rewards profit factor and win-rate quality while penalizing drawdown and
+discounting strategies that haven't traded enough to be confident in:
 
-- Volume MAS BTC Strategy
-- MAS BTC Strategy v4
-- MACD Slope ETH Strategy
-
-⚠️ **High Risk/Reward** (High PnL but high drawdown)
-
-- Volume MAS ETH Strategy
-- MAS ETH Strategy
-- Volume MAS SOL Strategy
-
-❌ **Needs Improvement** (Profit Factor < 1.5 or Sharpe < 0.2)
-
-- EMA BTC Strategy
-- MAS BTC Strategy v5
-
-# Backtest results
-
-## MAS strategy
-
-## Based on mas_strategy_btcusdt
-
-```python
-Total Trades: 302
-Win Trades: 136
-Lose Trades: 166
-Max win: $111135.05
-Max lose: $-40221.21
-Win Rate (Count-Based): 45.03%
-Win Rate (PnL-Weighted): 69.78%
-Profit Factor: 2.31
-Sharpe-like Ratio (return_pct/std): 0.31
-Max Drawdown: $68613.19
-Max Balance Seen: $626139.13
-Total PnL: $623721.13
-Final Balance: $625721.13
+```
+score = min(1, trades / 30)                      # statistical-significance discount
+      × min(profit_factor, 10)                   # capped so one outlier PF doesn't dominate
+      × (win_rate_weighted / 100)                 # value-weighted win rate
+      ÷ (1 + max_drawdown_pct / 100)              # drawdown penalty
 ```
 
-### Based on mas_strategy_btcusdt_2
+Strategies with **< 20 trades** are listed separately under "Insufficient
+sample size" regardless of how good their numbers look.
 
-```python
-Total Trades: 129
-Win Trades: 69
-Lose Trades: 60
-Max win: $5346.01
-Max lose: $-1074.11
-Win Rate (Count-Based): 53.49%
-Win Rate (PnL-Weighted): 77.34%
-Profit Factor: 3.41
-Sharpe-like Ratio (return_pct/std): 0.40
-Max Drawdown: $2541.82
-Max Balance Seen: $51848.29
-Total PnL: $48862.77
-Final Balance: $50862.77
-```
+## 🏆 Ranking by strategy type
 
-### Based on mas_strategy_btcusdt_3
+Which underlying **strategy** tends to perform best across its configs
+(best-qualifying-config average score; a class with no qualifying config is
+marked unreliable):
 
-```python
-Total Trades: 227
-Win Trades: 92
-Lose Trades: 135
-Max win: $87220.80
-Max lose: $-12696.72
-Win Rate (Count-Based): 40.53%
-Win Rate (PnL-Weighted): 69.33%
-Profit Factor: 2.26
-Sharpe-like Ratio (return_pct/std): 0.28
-Max Drawdown: $54905.65
-Max Balance Seen: $324667.73
-Total PnL: $301130.32
-Final Balance: $303130.32
-```
+| Rank | Strategy                | Configs | Profitable | Best qualifying config          | Best PF | Best return % |
+| ---- | ------------------------ | ------- | ---------- | -------------------------------- | ------- | -------------- |
+| 1    | `VolumeMASStrategy`      | 4       | 4/4        | volume_mas_strategy_btcusdt       | 2.16    | 631%            |
+| 2    | `MACDSlopeStrategy`      | 5       | 5/5        | macd_slope_strategy (generic)     | 1.78    | 93%             |
+| 3    | `MASStrategy`            | 8       | 8/8        | mas_strategy_btcusdt_2            | 2.02    | 506%            |
+| 4    | `EmaAtrReversalStrategy` | 3       | 3/3        | ema_atr_reversal_strategy_btcusdt_2 | 1.48  | 2,699%          |
+| 5    | `RSIStrategy`            | 2       | 1/2        | rsi_strategy_btcusdt              | 1.22    | 16%             |
+| 6    | `EMAStrategy`            | 2       | 2/2        | ema_strategy_ethusdt              | 1.26    | 2,087%          |
+| 7    | `VWAPStrategy`           | 1       | 0/1        | vwap_strategy_btcusdt             | 0.98    | -1%             |
+| 8    | `MultiEmaStrategy`       | 1       | 0/1        | multi_ema_strategy_btcusdt        | 0.90    | -13%            |
+| 9    | `BollingerBandsStrategy` | 1       | 0/1        | bollinger_bands_strategy          | 0.39    | -16%            |
+| —    | `PiCycleStrategy`        | 1       | 1/1        | pi_cycle_strategy_btcusdt         | —       | 510% (1 trade — meaningless) |
+| —    | `MACDStrategy`           | 2       | 2/2        | macd_strategy_btcusdt             | 1.53    | 3% (13 trades — not enough data) |
+| —    | `MACrossoverStrategy`    | 1       | 0/1        | ma_crossover_strategy             | 0.69    | -2% (6 trades — not enough data) |
+| —    | `StochasticStrategy`     | 3       | 3/3        | stochastic_strategy_btcusdt       | 40.8    | 8,574% (**13 trades — not enough data to trust**) |
 
-### Based on mas_strategy_btcusdt_4
+**Reading this**: `VolumeMASStrategy` remains the most consistently solid
+strategy *type* — every config that's been tried is profitable, and its
+best qualifying config has the highest score of anything with an adequate
+sample. `MASStrategy` is again close behind with by far the most configs
+tested (8/8 profitable) — that kind of consistency across parameter
+perturbation is a better robustness signal than any single config's
+headline number. `MACDSlopeStrategy` moved down from last time (its
+best-looking config, `_solusdt`, cooled off with fresh data — see the
+caveat above) but every one of its 5 configs is still profitable.
+`StochasticStrategy` again looks incredible and again has zero configs with
+enough trades to trust — the extra year of data didn't change that (12 → 13
+trades).
 
-```python
-Total Trades: 140
-Win Trades: 72
-Lose Trades: 68
-Max win: $8051.13
-Max lose: $-1903.48
-Win Rate (Count-Based): 51.43%
-Win Rate (PnL-Weighted): 73.44%
-Profit Factor: 2.76
-Sharpe-like Ratio (return_pct/std): 0.36
-Max Drawdown: $4852.56
-Max Balance Seen: $48201.59
-Total PnL: $45502.75
-Final Balance: $47502.75
-```
+## 📊 Full config-level ranking
 
-### Based on mas_strategy_btcusdt_5
+### 🏆 Top tier (score ≥ 1.0)
 
-```python
-Total Trades: 431
-Win Trades: 172
-Lose Trades: 259
-Max win: $40590.03
-Max lose: $-11585.96
-Win Rate (Count-Based): 39.91%
-Win Rate (PnL-Weighted): 62.30%
-Profit Factor: 1.65
-Sharpe-like Ratio (return_pct/std): 0.23
-Max Drawdown: $32192.76
-Max Balance Seen: $209536.86
-Total PnL: $204656.73
-Final Balance: $206656.73
-```
+| Config                              | Score | Trades | PF   | Win% (wtd) | Max DD% | Return % |
+| ------------------------------------ | ----: | -----: | ---: | ---------: | ------: | -------: |
+| volume_mas_strategy_btcusdt           | 1.30  | 119    | 2.16 | 68.3%      | 13.9%   | 631%     |
+| mas_strategy_btcusdt_2                | 1.20  | 124    | 2.02 | 66.9%      | 12.8%   | 506%     |
+| volume_mas_strategy_ethusdt           | 1.18  | 94     | 2.09 | 67.7%      | 19.7%   | 851%     |
+| volume_mas_strategy_solusdt           | 1.12  | 97     | 1.93 | 65.8%      | 13.0%   | 2,667%   |
+| macd_slope_strategy (generic config)  | 1.04  | 105    | 1.78 | 64.1%      | 9.6%    | 93%      |
+| macd_slope_strategy_btcusdt           | 1.03  | 85     | 1.90 | 65.5%      | 20.5%   | 1,877%   |
+| mas_strategy_btcusdt_4                | 1.02  | 143    | 1.84 | 64.8%      | 17.1%   | 714%     |
 
-## Based on mas_strategy_ethusdt
+### ⭐ Solid tier (0.5 ≤ score < 1.0)
 
-```python
-Total Trades: 321
-Win Trades: 141
-Lose Trades: 180
-Max win: $215476.80
-Max lose: $-49466.85
-Win Rate (Count-Based): 43.93%
-Win Rate (PnL-Weighted): 69.12%
-Profit Factor: 2.24
-Sharpe-like Ratio (return_pct/std): 0.28
-Max Drawdown: $114391.56
-Max Balance Seen: $1144686.10
-Total PnL: $1141824.12
-Final Balance: $1143824.12
-```
+| Config                              | Score | Trades | PF   | Win% (wtd) | Max DD% | Return % |
+| ------------------------------------ | ----: | -----: | ---: | ---------: | ------: | -------: |
+| macd_slope_strategy_ethusdt           | 0.93  | 75     | 1.82 | 64.5%      | 26.5%   | 6,943%   |
+| macd_slope_strategy_solusdt           | 0.90  | 51     | 1.84 | 64.8%      | 33.3%   | 11,477%  |
+| mas_strategy_btcusdt                  | 0.80  | 230    | 1.60 | 61.5%      | 22.5%   | 1,497%   |
+| ema_atr_reversal_strategy_btcusdt_2   | 0.68  | 142    | 1.48 | 59.7%      | 29.7%   | 2,699%   |
+| ema_atr_reversal_strategy_btcusdt     | 0.63  | 47     | 1.48 | 59.7%      | 39.7%   | 1,808%   |
+| ema_atr_reversal_strategy_btcusdt_3   | 0.63  | 139    | 1.42 | 58.7%      | 32.3%   | 2,349%   |
+| mas_strategy_ethusdt                  | 0.61  | 242    | 1.36 | 57.6%      | 29.5%   | 869%     |
+| mas_strategy_ethusdt_2                | 0.60  | 108    | 1.39 | 58.2%      | 35.1%   | 291%     |
+| mas_strategy_btcusdt_3                | 0.60  | 186    | 1.40 | 58.4%      | 36.5%   | 628%     |
+| macd_slope_strategy_linkusdt          | 0.59  | 140    | 1.36 | 57.5%      | 31.3%   | 1,805%   |
+| rsi_strategy_btcusdt                  | 0.57  | 48     | 1.22 | 54.9%      | 16.8%   | 16%      |
 
-### Based on mas_strategy_ethusdt_2
+### ⚠️ Marginal (barely profitable, score < 0.5)
 
-```python
-Total Trades: 111
-Win Trades: 57
-Lose Trades: 54
-Max win: $6559.54
-Max lose: $-4403.20
-Win Rate (Count-Based): 51.35%
-Win Rate (PnL-Weighted): 68.63%
-Profit Factor: 2.19
-Sharpe-like Ratio (return_pct/std): 0.35
-Max Drawdown: $6996.45
-Max Balance Seen: $44156.27
-Total PnL: $35301.06
-Final Balance: $37301.06
-```
+| Config                | Score | Trades | PF   | Win% (wtd) | Max DD% | Return % |
+| ---------------------- | ----: | -----: | ---: | ---------: | ------: | -------: |
+| ema_strategy_ethusdt   | 0.48  | 380    | 1.26 | 55.8%      | 45.7%   | 2,087%   |
+| mas_strategy_btcusdt_5 | 0.47  | 390    | 1.19 | 54.3%      | 36.5%   | 407%     |
+| ema_strategy_btcusdt   | 0.45  | 889    | 1.16 | 53.8%      | 40.4%   | 879%     |
+| mas_strategy_btcusdt_6 | 0.37  | 334    | 1.03 | 50.7%      | 41.0%   | 10.3%    |
 
-## MAS + Volume strategy
+### ❌ Losing (profit factor < 1)
 
-### Based on volume_mas_strategy_btcusdt
+| Config                     | Score | Trades | PF   | Win% (wtd) | Max DD% | Return % |
+| --------------------------- | ----: | -----: | ---: | ---------: | ------: | -------: |
+| vwap_strategy_btcusdt        | 0.42  | 60     | 0.98 | 49.4%      | 13.3%   | -1.4%    |
+| multi_ema_strategy_btcusdt   | 0.36  | 723    | 0.90 | 47.3%      | 18.0%   | -12.8%   |
+| bollinger_bands_strategy     | 0.08  | 27     | 0.39 | 27.9%      | 15.8%   | -15.8%   |
 
-```python
-Total Trades: 179
-Win Trades: 84
-Lose Trades: 95
-Max win: $27113.69
-Max lose: $-7344.17
-Win Rate (Count-Based): 46.93%
-Win Rate (PnL-Weighted): 76.76%
-Profit Factor: 3.30
-Sharpe-like Ratio (return_pct/std): 0.40
-Max Drawdown: $13093.19
-Max Balance Seen: $276664.94
-Total PnL: $273063.50
-Final Balance: $275063.50
-```
+### 🔍 Insufficient sample size (< 20 trades — not ranked)
 
-### Based on volume_mas_strategy_ethusdt
+| Config                        | Trades | PF    | Return % | Note |
+| ------------------------------ | -----: | ----: | -------: | ---- |
+| pi_cycle_strategy_btcusdt       | 1      | —     | 510%     | A single trade is not a backtest |
+| stochastic_strategy_btcusdt     | 13     | 40.8  | 8,574%   | Duplicate of the config below |
+| stochastic_strategy_btcusdt_2   | 13     | 40.8  | 8,574%   | Duplicate of the config above |
+| macd_strategy_btcusdt           | 13     | 1.53  | 3.3%     |      |
+| stochastic_strategy_ethusdt     | 13     | 1.30  | 141%     |      |
+| macd_strategy_ethusdt           | 9      | 1.54  | 3.9%     |      |
+| rsi_strategy                    | 14     | 0.57  | -9.5%    | Also hit its own circuit breaker (max drawdown limit) |
+| ma_crossover_strategy           | 6      | 0.69  | -2.4%    |      |
+| volume_mas_strategy_btcusdt_2   | 18     | 3.53  | 85%      | 2 trades short of the 20-trade bar; consistently promising across both runs |
 
-```python
-Total Trades: 178
-Win Trades: 72
-Lose Trades: 106
-Max win: $391490.33
-Max lose: $-54215.69
-Win Rate (Count-Based): 40.45%
-Win Rate (PnL-Weighted): 73.96%
-Profit Factor: 2.84
-Sharpe-like Ratio (return_pct/std): 0.34
-Max Drawdown: $165586.11
-Max Balance Seen: $1493757.28
-Total PnL: $1345196.73
-Final Balance: $1347196.73
-```
+## Key findings
 
-### volume_mas_strategy_solusdt
+1. **Best strategy type**: `VolumeMASStrategy` — every tested config is
+   profitable, and it now holds the top score among adequately-sampled
+   configs (`volume_mas_strategy_btcusdt`, score 1.30, PF 2.16 on 119 trades).
+2. **Most robust across variants**: `MASStrategy` — 8 different parameter
+   sets tried, all 8 still profitable after a year of new data, 3 in the
+   top tier. Consistency across parameter perturbation is a better
+   robustness signal than any single config's headline number.
+3. **Biggest mover**: `macd_slope_strategy_solusdt` — was the #1 config last
+   run (score 2.72, PF 3.95, 40 trades); with ~11 more trades of fresh data
+   its profit factor fell to 1.84 and it dropped to the solid tier. This is
+   the significance gate doing its job — a config that moves this much on
+   one extra year of data was never as strong as its old headline number
+   suggested.
+4. **Needs more data before it can be trusted**: `StochasticStrategy` — the
+   best-looking numbers in the whole set (PF 40.8), still only 13 trades
+   after the data refresh. Needs more symbols/timeframes or a looser entry
+   condition, not more calendar time on the same one.
+5. **Currently losing money**: `BollingerBandsStrategy`, `MultiEmaStrategy`,
+   and `VWAPStrategy` — all have a profit factor under 1 on real history,
+   consistent with the previous run.
+6. **Return % is still not a ranking signal** — see the caveats section
+   above. Profit factor, win rate, and drawdown are what's worth comparing
+   across configs.
 
-```python
-Total Trades: 122
-Win Trades: 57
-Lose Trades: 65
-Max win: $130311.08
-Max lose: $-71553.46
-Win Rate (Count-Based): 46.72%
-Win Rate (PnL-Weighted): 72.78%
-Profit Factor: 2.67
-Sharpe-like Ratio (return_pct/std): 0.34
-Max Drawdown: $106508.87
-Max Balance Seen: $973196.43
-Total PnL: $971196.43
-Final Balance: $973196.43
-```
+## Recommended next steps
 
-## EMA strategy
-
-### ema_strategy_btcusdt
-
-```python
-Total Trades: 768
-Win Trades: 265
-Lose Trades: 503
-Max win: $3600.75
-Max lose: $-1099.82
-Win Rate (Count-Based): 34.51%
-Win Rate (PnL-Weighted): 56.26%
-Profit Factor: 1.29
-Sharpe-like Ratio (return_pct/std): 0.13
-Max Drawdown: $11764.63
-Max Balance Seen: $32502.18
-Total PnL: $25642.46
-Final Balance: $27642.46
-```
-
-## Stochastic strategy
-
-### stochastic_strategy_btcusdt
-
-```python
-Total Trades: 11
-Win Trades: 7
-Lose Trades: 4
-Max win: $67342.53
-Max lose: $-1632.93
-Win Rate (Count-Based): 63.64%
-Win Rate (PnL-Weighted): 97.45%
-Profit Factor: 38.22
-Sharpe-like Ratio (return_pct/std): 0.61
-Max Drawdown: $1632.93
-Max Balance Seen: $167838.06
-Total PnL: $160405.42
-Final Balance: $162405.42
-```
-
-## MACD Slope strategy
-
-### macd_slope_strategy_btcusdt
-
-```python
-Total Trades: 73
-Win Trades: 32
-Lose Trades: 41
-Max win: $8134.54
-Max lose: $-2415.46
-Win Rate (Count-Based): 43.84%
-Win Rate (PnL-Weighted): 72.03%
-Profit Factor: 2.58
-Sharpe-like Ratio (return_pct/std): 0.29
-Max Drawdown: $3886.61
-Max Balance Seen: $46980.63
-Total PnL: $44189.99
-Final Balance: $46189.99
-```
-
-### macd_slope_strategy_ethusdt
-
-```python
-Total Trades: 66
-Win Trades: 31
-Lose Trades: 35
-Max win: $44733.24
-Max lose: $-11828.57
-Win Rate (Count-Based): 46.97%
-Win Rate (PnL-Weighted): 67.87%
-Profit Factor: 2.11
-Sharpe-like Ratio (return_pct/std): 0.38
-Max Drawdown: $26162.64
-Max Balance Seen: $125603.43
-Total PnL: $123603.43
-Final Balance: $125603.43
-```
-
-### macd_slope_strategy_solusdt
-
-```python
-Total Trades: 40
-Win Trades: 20
-Lose Trades: 20
-Max win: $107728.82
-Max lose: $-19073.16
-Win Rate (Count-Based): 50.00%
-Win Rate (PnL-Weighted): 79.79%
-Profit Factor: 3.95
-Sharpe-like Ratio (return_pct/std): 0.47
-Max Drawdown: $55560.58
-Max Balance Seen: $347025.31
-Total PnL: $345025.31
-Final Balance: $347025.31
-```
-
-### macd_slope_strategy_linkusdt
-
-```python
-Total Trades: 123
-Win Trades: 57
-Lose Trades: 66
-Max win: $8938.56
-Max lose: $-8839.36
-Win Rate (Count-Based): 46.34%
-Win Rate (PnL-Weighted): 60.29%
-Profit Factor: 1.52
-Sharpe-like Ratio (return_pct/std): 0.24
-Max Drawdown: $16944.49
-Max Balance Seen: $55474.59
-Total PnL: $42111.23
-Final Balance: $44111.23
-```
-
-# 📊 Performance Summary
-
-| Strategy                    | Trades | Win%   | PnL ($)      | PF¹   | Max DD² (%) | Sharpe | Verdict              |
-| --------------------------- | ------ | ------ | ------------ | ----- | ----------- | ------ | -------------------- |
-| **Stochastic BTC Strategy** | 11     | 63.64% | 160,405.42   | 38.22 | 0.98        | 0.61   | 🏆 Elite Performer   |
-| **MACD Slope SOL Strategy** | 40     | 50.00% | 345,025.31   | 3.95  | 55.6        | 0.47   | 🏆 Elite Performer   |
-| **MAS BTC Strategy v2**     | 129    | 53.49% | 48,862.77    | 3.41  | 2.5         | 0.40   | 🏆 Elite Performer   |
-| **Volume MAS BTC Strategy** | 179    | 46.93% | 273,063.50   | 3.30  | 13.0        | 0.40   | ⭐ Strong Performer  |
-| **MAS BTC Strategy v4**     | 140    | 51.43% | 45,502.75    | 2.76  | 4.9         | 0.36   | ⭐ Strong Performer  |
-| **MACD Slope ETH Strategy** | 66     | 46.97% | 123,603.43   | 2.11  | 26.2        | 0.38   | ⭐ Strong Performer  |
-| **Volume MAS ETH Strategy** | 178    | 40.45% | 1,345,197.00 | 2.84  | 165.6       | 0.34   | ⚠️ High Risk/Reward  |
-| **MAS ETH Strategy**        | 321    | 43.93% | 1,141,824.12 | 2.24  | 114.0       | 0.28   | ⚠️ High Risk/Reward  |
-| **Volume MAS SOL Strategy** | 122    | 46.72% | 971,196.43   | 2.67  | 106.5       | 0.34   | ⚠️ High Risk/Reward  |
-| **MAS BTC Strategy**        | 302    | 45.03% | 623,721.13   | 2.31  | 68.0        | 0.31   | ⚠️ High Risk/Reward  |
-| **MAS BTC Strategy v3**     | 227    | 40.53% | 301,130.32   | 2.26  | 55.0        | 0.28   | ⚠️ High Risk/Reward  |
-| **EMA BTC Strategy**        | 768    | 34.51% | 25,642.46    | 1.29  | 11.8        | 0.13   | ❌ Needs Improvement |
-| **MAS BTC Strategy v5**     | 431    | 39.91% | 204,656.73   | 1.65  | 32.0        | 0.23   | ❌ Needs Improvement |
-
-## Key Findings
-
-1. **Best Overall Strategy**: Stochastic BTC with highest risk-adjusted returns (Sharpe 0.61)
-2. **Most Consistent**: MAS BTC v2 with solid metrics across all categories
-3. **Most Scalable**: Volume MAS BTC showing good balance of returns and risk
-4. **Needs Optimization**: EMA BTC showing poor risk-adjusted returns
+- Re-run `StochasticStrategy` on more symbols/timeframes or loosen its entry
+  condition — two data refreshes in a row have left it at essentially the
+  same (tiny) trade count.
+- `volume_mas_strategy_btcusdt_2` (18 trades, PF 3.53) is worth extending —
+  it's now only 2 trades short of the significance bar and has looked
+  strong in both runs.
+- Consider turning on `use_risk_management` + a sane `position_size_pct` for
+  the top-tier configs and re-measuring — the numbers above assume
+  unconstrained 100%-of-balance compounding, which no real account can do.
+- Investigate why `BollingerBandsStrategy`, `VWAPStrategy`, and
+  `MultiEmaStrategy` are net losers: mean-reversion/VWAP-fade logic may
+  simply not suit trending BTC/ETH history, or their parameters may need
+  optimization (their `optimization.variables` ranges exist in their config
+  files but haven't been run through `run_optimization` in this pass).
+- Re-run this whole ranking again after the next data refresh
+  (`python trade_pro/main.py fetch`) and diff it against this version —
+  which configs move a lot between runs is itself useful robustness
+  information, as `macd_slope_strategy_solusdt` just demonstrated.

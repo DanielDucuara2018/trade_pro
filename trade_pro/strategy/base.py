@@ -97,6 +97,8 @@ class Base:
         commission: float = 0.0004,
         slippage: float = 0.0005,
         start_backtest_index: int = 0,
+        end_backtest_index: int
+        | None = None,  # Bound a simple backtest to a window (e.g. optimization)
         start_live_index: int = -2,
         allow_multiple_positions: bool = False,
         max_concurrent_trades: int = 3,
@@ -120,6 +122,7 @@ class Base:
         self.commission = commission
         self.slippage = slippage
         self.start_backtest_index = start_backtest_index
+        self.end_backtest_index = end_backtest_index
         self.start_live_index = start_live_index
         self.use_next_candle_open = use_next_candle_open
 
@@ -154,6 +157,7 @@ class Base:
         self._current_single_trade: Trade | None = None  # Current trade for single position mode
         self.mode = None
         self.telegram_bot = None
+        self.run_label: str | None = None
         self._trade_counter = 0  # Counter for unique trade IDs
 
     @property
@@ -240,8 +244,11 @@ class Base:
         self, trade: Trade, df: pd.DataFrame, *, index: int = -1
     ) -> tuple[bool, float | None, str]:
         """
-        Determine if a specific position should be exited when multiple positions are allowed.
-        Uses intra-candle logic to detect if SL/TP was hit within the candle's range.
+        Determine if a specific position should be exited.
+        Uses intra-candle logic to detect if SL/TP was hit within the candle's range,
+        for both single- and multiple-position modes. Falls back to the strategy's
+        exit_condition (market exit at close price) when no stop_loss/take_profit is
+        set on the trade, or neither was hit this candle.
 
         Args:
             trade: The active trade to evaluate
@@ -254,9 +261,6 @@ class Base:
                 - exit_price: Exact exit price if SL/TP hit, None for market exit
                 - reason: Exit reason ("Stop Loss", "Take Profit", "Exit Signal")
         """
-        if not self.allow_multiple_positions:
-            return self.position and self.exit_condition(df, index=index), None, "Exit Signal"
-
         current_candle = df.iloc[index]
         candle_low = current_candle["low"]
         candle_high = current_candle["high"]
@@ -355,13 +359,36 @@ class Base:
             historical_buffer = self._fetch_latest_data(historical_buffer)
             data = self.compute_indicators(historical_buffer)
             row = data.iloc[self.start_live_index]
+            next_row = self._get_live_next_row(data)
 
             logger.info(f"[{self.__class__.__name__}] Running entry/exit condition")
             entry_price, entry_time, units = self._process_candle(
-                data, row, self.start_live_index, None, entry_price, entry_time, units
+                data, row, self.start_live_index, next_row, entry_price, entry_time, units
             )
 
             wait_for_next_candle(timeframe=self.timeframes[0])
+
+    def _get_live_next_row(self, data: pd.DataFrame) -> pd.Series | None:
+        """The candle immediately after the one live decisions are made on
+        (self.start_live_index), if it has already been fetched.
+
+        Without this, use_next_candle_open was a silent no-op in live trading —
+        _get_execution_price only applies it when next_row is not None, and this
+        was previously always passed as None. The "next" candle's open price is
+        known as soon as that candle starts (even before it closes), so it's
+        safe to use here as long as it has actually been fetched. Returns None
+        when start_live_index already points at the most recently fetched
+        candle (there's nothing "next" yet).
+        """
+        absolute_index = (
+            self.start_live_index
+            if self.start_live_index >= 0
+            else len(data) + self.start_live_index
+        )
+        next_index = absolute_index + 1
+        if next_index >= len(data):
+            return None
+        return data.iloc[next_index]
 
     def _fetch_latest_data(
         self, historical_buffer: dict[str, pd.DataFrame]
@@ -385,22 +412,27 @@ class Base:
             self._run_simple_backtest(data)
 
     def _run_simple_backtest(self, data: pd.DataFrame) -> None:
-        """Traditional backtest on entire dataset"""
+        """Traditional backtest on entire dataset, or a bounded [start, end)
+        window when end_backtest_index is set (used by optimization to keep a
+        train/test window's own trades and balance from bleeding into data
+        beyond that window)."""
         entry_price, entry_time, units = self._init_single_position_vars()
+        end_index = self.end_backtest_index if self.end_backtest_index is not None else len(data)
 
-        for i in range(self.start_backtest_index, len(data)):
+        for i in range(self.start_backtest_index, end_index):
             row = data.iloc[i]
             next_row = data.iloc[i + 1] if i + 1 < len(data) else None
             entry_price, entry_time, units = self._process_candle(
                 data, row, i, next_row, entry_price, entry_time, units
             )
 
-        self._finalize_backtest(data)
+        self._finalize_backtest(data, end_index)
 
-    def _finalize_backtest(self, data: pd.DataFrame) -> None:
+    def _finalize_backtest(self, data: pd.DataFrame, end_index: int | None = None) -> None:
         """Close remaining trades and generate reports"""
+        final_index = (end_index if end_index is not None else len(data)) - 1
         if self.allow_multiple_positions and self.active_trades:
-            final_row = data.iloc[-1]
+            final_row = data.iloc[final_index]
             for trade_id in list(self.active_trades.keys()):
                 self._close_active_trade(trade_id, final_row, "End of backtest")
 
@@ -662,6 +694,13 @@ class Base:
         position_size, units = self._calculate_position_size_and_units(
             entry_price, stop_loss, self.balance
         )
+        if units <= 0:
+            logger.warning(
+                f"[{self.__class__.__name__}] Skipping entry at {row.name} — insufficient "
+                f"balance (${self.balance:.2f}) to open a position"
+            )
+            return self._init_single_position_vars()
+
         entry_time = row.name
 
         self._create_and_store_trade(entry_time, entry_price, units, position_size)
@@ -675,17 +714,22 @@ class Base:
     ) -> tuple[float, float]:
         """Calculate position size and units based on risk management settings
 
+        Always routed through the risk manager, which itself falls back to
+        ``available_capital * position_size_pct`` when risk-based sizing isn't
+        applicable (risk management disabled, or no stop_loss to size against) —
+        this guarantees position_size_pct is honored in every case, not only when
+        risk management is on.
+
         Returns:
             tuple: (position_size, units)
         """
-        if self.risk_manager.use_risk_management and stop_loss > 0:
-            position_size = self.risk_manager.calculate_position_size(
-                entry_price, stop_loss, available_capital
-            )
-            units = position_size / entry_price
-        else:
-            units = available_capital / entry_price
-            position_size = units * entry_price
+        if available_capital <= 0:
+            return 0.0, 0.0
+
+        position_size = self.risk_manager.calculate_position_size(
+            entry_price, stop_loss, available_capital
+        )
+        units = position_size / entry_price
 
         return position_size, units
 
@@ -860,7 +904,8 @@ class Base:
             logger.info(
                 f"Trade {i + 1}: {trade.entry_time} -> {trade.exit_time} | "
                 f"Entry: ${trade.entry_price:.2f} | Exit: ${trade.exit_price:.2f} | "
-                f"PnL: ${trade.pnl:.2f} | Return: {(trade.return_pct * 100):.2f}%"
+                f"PnL: ${trade.pnl:.2f} | Return: {(trade.return_pct * 100):.2f}% | "
+                f"Reason: {trade.reason or 'n/a'}"
             )
 
     def _log_performance_stats(self, metrics: dict) -> None:
@@ -907,8 +952,9 @@ class Base:
         if self.mode == Mode.BACKTEST:
             # Pass completed trades to chart functions
             completed_trades = self.completed_trades
-            plot_price_chart(symbol, self.__class__.__name__, df, completed_trades)
-            plot_equity_curve(symbol, self.__class__.__name__, completed_trades)
+            label = self.run_label or self.__class__.__name__
+            plot_price_chart(symbol, label, df, completed_trades)
+            plot_equity_curve(symbol, label, completed_trades)
 
     def _handle_multiple_positions(
         self, data: pd.DataFrame, row: pd.Series, index: int, next_row: pd.Series | None = None
@@ -916,7 +962,8 @@ class Base:
         """Handle multiple position logic for both backtesting and live trading"""
         # Check for new entries
         if self.should_enter_new_position(data, index=index):
-            self._execute_multiple_entry(row, next_row)
+            stop_loss = self._calculate_multi_entry_stop_loss(row, next_row)
+            self._execute_multiple_entry(row, next_row, stop_loss)
 
         # Check exits for all active trades
         trades_to_close = []
@@ -928,6 +975,20 @@ class Base:
         # Close trades that meet exit conditions
         for trade_id, exit_price, reason in trades_to_close:
             self._close_active_trade(trade_id, row, reason, next_row, exit_price)
+
+    def _calculate_multi_entry_stop_loss(
+        self, row: pd.Series, next_row: pd.Series | None = None
+    ) -> float:
+        """
+        Compute the stop-loss price to size a new multi-position entry against,
+        *before* the position is sized. Defaults to 0 (no risk-based sizing).
+
+        Override this in a strategy that wants per-trade ATR/other stops to
+        actually drive position sizing in multi-position mode — setting
+        trade.stop_loss only *after* the trade is created is too late, since
+        sizing has already happened by then.
+        """
+        return 0
 
     def _execute_multiple_entry(
         self, row: pd.Series, next_row: pd.Series | None = None, stop_loss: float = 0
@@ -948,7 +1009,16 @@ class Base:
             entry_price=entry_price,
             units=units,
             position_size=position_value,
+            stop_loss=stop_loss,
         )
+
+        if units <= 0:
+            logger.warning(
+                f"[{self.__class__.__name__}] Skipping multi-entry at {row.name} — "
+                f"insufficient available balance (${available_balance:.2f})"
+            )
+            return trade
+
         self.trades[trade_id] = trade
         self.position = True
 

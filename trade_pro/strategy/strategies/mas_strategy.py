@@ -116,7 +116,9 @@ class MASStrategy(Base):
         # --- Daily SMA Trend Filter ---
         df_1d[f"SMA{self.trend_sma_period}"] = ta.sma(df_1d["close"], self.trend_sma_period)
         df_1d["BULLISH_TREND"] = df_1d["close"] > df_1d[f"SMA{self.trend_sma_period}"]
-        df_1h["BULLISH_TREND"] = df_1d["BULLISH_TREND"].reindex(df_1h.index, method="ffill")
+        df_1h["BULLISH_TREND"] = (
+            df_1d["BULLISH_TREND"].shift(1).reindex(df_1h.index, method="ffill")
+        )
 
         return df_1h
 

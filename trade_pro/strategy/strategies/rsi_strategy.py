@@ -87,6 +87,9 @@ class RSIStrategy(ATRStrategyBase):
         """Entry when RSI crosses above oversold"""
         if self.position:
             return False
+        if 0 <= index < 1:
+            # Not enough history yet at the very start of a backtest
+            return False
 
         row = df.iloc[index]
         prev = df.iloc[index - 1]

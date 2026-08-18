@@ -71,6 +71,10 @@ class MACDSlopeStrategy(ATRStrategyBase):
         return df
 
     def entry_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
+        if 0 <= index < 2:
+            # Not enough history yet at the very start of a backtest
+            return False
+
         row = df.iloc[index]
         prev = df.iloc[index - 1]
         prev2 = df.iloc[index - 2]

@@ -28,7 +28,9 @@ def run(mode: str, strategy_name: str, file_name: str) -> None:
         raise ValueError("There is not strategy section in config. Please provide one.")
 
     if mode != Mode.OPTIMIZATION:
-        cls(**strategy_config).run(mode)
+        strategy = cls(**strategy_config)
+        strategy.run_label = file_name
+        strategy.run(mode)
         return
 
     # Optimization mode - check for walk_forward config

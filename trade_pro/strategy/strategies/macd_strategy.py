@@ -58,13 +58,13 @@ class MACDStrategy(RSIStrategy):
             initial_balance,
             timeframes,
             start_backtest_index,
-            rsi_period,
-            rsi_oversold,
-            rsi_overbought,
-            ema_period,
-            adx_period,
-            adx_treshold,
+            rsi_period=rsi_period,
+            rsi_oversold=rsi_oversold,
+            rsi_overbought=rsi_overbought,
         )
+        self.ema_period = ema_period
+        self.adx_period = adx_period
+        self.adx_treshold = adx_treshold
         self.macd_fast = macd_fast
         self.macd_slow = macd_slow
         self.macd_signal = macd_signal

@@ -71,11 +71,10 @@ class VWAPStrategy(Base):
         df_1h["vwap_upper_2SD"] = df_1h["vwap"] + self.band_lower_multiplier * df_1h["std"]
         df_1h["vwap_lower_2SD"] = df_1h["vwap"] - self.band_lower_multiplier * df_1h["std"]
 
-        # Yesterday's VWAP (used as fixed S/R level)
-        df_1h["date"] = df_1h.index.date
-        yesterday = df_1h["date"].unique()[-2]
-        vwap_yesterday = df_1h[df_1h["date"] == yesterday]["vwap"].iloc[-1]
-        df_1h["vwap_yesterday"] = vwap_yesterday
+        # Yesterday's VWAP (used as fixed S/R level).
+        day = df_1h.index.normalize()
+        daily_last_vwap = df_1h.groupby(day)["vwap"].last()
+        df_1h["vwap_yesterday"] = day.map(daily_last_vwap.shift(1))
 
         return df_1h
 
@@ -83,15 +82,19 @@ class VWAPStrategy(Base):
         row = df.iloc[index]
         prev = df.iloc[index - 1]
 
-        self.dynamic_stop_loss = row["vwap_upper_1SD"]
-        self.dynamic_take_profit = row["vwap_lower_2SD"]
-
-        return (
+        entry_signal = (
             not self.position
             and prev["close"] > prev["vwap"]
             and row["close"] < row["vwap"]
             and row["close"] < row["vwap_yesterday"]
         )
+
+        if entry_signal:
+            # Fix the stop/target at entry time — only recompute them when a new trade is actually opened
+            self.dynamic_stop_loss = row["vwap_upper_1SD"]
+            self.dynamic_take_profit = row["vwap_lower_2SD"]
+
+        return entry_signal
 
     def exit_condition(self, df: pd.DataFrame, *, index: int = 0) -> bool:
         row = df.iloc[index]

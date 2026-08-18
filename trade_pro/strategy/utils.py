@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import ccxt
-import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib import colormaps
 
 if TYPE_CHECKING:
     from trade_pro.strategy.base import Trade
@@ -88,10 +88,53 @@ def get_data(symbol: str, timeframe: str) -> pd.DataFrame:
     return df.drop_duplicates()
 
 
+def _load_existing_data(symbol: str, timeframe: str, csv_path: Path) -> pd.DataFrame | None:
+    """Local data already on disk for symbol/timeframe, or None if there
+    isn't any (yet)."""
+    if not csv_path.exists():
+        return None
+    existing_df = get_data(symbol, timeframe)
+    return existing_df if not existing_df.empty else None
+
+
+def _resolve_fetch_start(
+    symbol: str, timeframe: str, existing_df: pd.DataFrame | None, requested_start: pd.Timestamp
+) -> pd.Timestamp:
+    """Where to actually start fetching from: requested_start, unless local
+    data already covers up to (or past) it, in which case only the gap since
+    the last local candle needs fetching."""
+    if existing_df is None:
+        return requested_start
+
+    last_existing = existing_df.index.max()
+    if requested_start >= last_existing:
+        return requested_start
+
+    logger.info(
+        "Existing data for %s %s already goes up to %s — fetching only the gap since then "
+        "instead of re-fetching the whole range",
+        symbol,
+        timeframe,
+        last_existing,
+    )
+    return last_existing
+
+
 def fetch_data(
     symbol: str, timeframe: str, start_date: pd.Timestamp, end_date: pd.Timestamp
 ) -> None:
+    """Fetch OHLCV history for symbol/timeframe and write it to
+    trade_pro/strategy/data/. If a local file already exists for this
+    symbol/timeframe, only the gap since its last candle is fetched from
+    Binance and merged in — this previously re-fetched (and overwrote) the
+    entire range from start_date every time, which was wasteful and, worse,
+    would have silently discarded any local history older than start_date.
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    csv_path = DATA_DIR.joinpath(f"{symbol.replace('/', '')}_{timeframe}.csv")
+
+    existing_df = _load_existing_data(symbol, timeframe, csv_path)
+    start_date = _resolve_fetch_start(symbol, timeframe, existing_df, start_date)
 
     ohlcv = []
     limit = 1000
@@ -102,13 +145,22 @@ def fetch_data(
         )
         start_date += pd.Timedelta(1000, timeframe[-1])
 
+    if not ohlcv:
+        logger.info("No new candles to fetch for %s %s", symbol, timeframe)
+        return
+
     df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     df.set_index("timestamp", inplace=True)
     df = df.drop_duplicates()
     if df.index.duplicated().any():
         print(f"There are duplicated dates {df[df.index.duplicated()]}")
-    df.to_csv(DATA_DIR.joinpath(f"{symbol.replace('/', '')}_{timeframe}.csv"))
+
+    if existing_df is not None:
+        df = update_data(existing_df, df)
+
+    logger.info("Writing %d candles for %s %s to %s", len(df), symbol, timeframe, csv_path)
+    df.to_csv(csv_path)
 
 
 def load_strategy_config(file_name: str) -> dict[str, Any]:
@@ -135,7 +187,7 @@ def plot_price_chart(
     trade_list = list(trades.values())
 
     # Use a colormap to differentiate trades
-    cmap = cm.get_cmap("tab20", len(trade_list))  # tab20 or any other colormap
+    cmap = colormaps["tab20"].resampled(len(trade_list))  # tab20 or any other colormap
     for i, trade in enumerate(trade_list):
         entry_time = trade.entry_time
         exit_time = trade.exit_time

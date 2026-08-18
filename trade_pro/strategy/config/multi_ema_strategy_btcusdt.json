@@ -1,0 +1,20 @@
+{
+    "strategy": {
+        "symbol": "BTCUSDT",
+        "initial_balance": 10000,
+        "timeframes": ["1h"],
+        "start_backtest_index": 100,
+        "fast_ema": 8,
+        "medium_ema": 21,
+        "slow_ema": 55,
+        "atr_period": 14,
+        "atr_multiplier_sl": 2.0,
+        "atr_multiplier_tp": 3.0,
+        "enable_multiple_positions": true,
+        "max_positions": 3,
+        "position_size_pct": 0.25,
+        "commission": 0.0004,
+        "slippage": 0.0005
+    },
+    "description": "Multi-EMA strategy with multiple concurrent positions support. Uses EMA crossovers for entries and individual stop-loss/take-profit for each position."
+}
