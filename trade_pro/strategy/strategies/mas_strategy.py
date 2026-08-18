@@ -116,11 +116,6 @@ class MASStrategy(Base):
         # --- Daily SMA Trend Filter ---
         df_1d[f"SMA{self.trend_sma_period}"] = ta.sma(df_1d["close"], self.trend_sma_period)
         df_1d["BULLISH_TREND"] = df_1d["close"] > df_1d[f"SMA{self.trend_sma_period}"]
-        # Lag by one full day before reindexing onto the hourly index: an hourly
-        # candle on day D must only ever see day D-1's *completed* daily close/SMA,
-        # never day D's own close (which hasn't happened yet from that candle's
-        # point of view). Without the shift, every hour of day D was being compared
-        # against day D's own eventual close — a look-ahead bias.
         df_1h["BULLISH_TREND"] = (
             df_1d["BULLISH_TREND"].shift(1).reindex(df_1h.index, method="ffill")
         )

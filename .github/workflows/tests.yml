@@ -1,0 +1,27 @@
+name: Run tests
+
+on:
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12.3
+
+      - name: Install the project
+        run: pip install -e .
+
+      - name: Run tests
+        run: pytest tests/ -v

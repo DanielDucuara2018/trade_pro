@@ -72,10 +72,6 @@ class VWAPStrategy(Base):
         df_1h["vwap_lower_2SD"] = df_1h["vwap"] - self.band_lower_multiplier * df_1h["std"]
 
         # Yesterday's VWAP (used as fixed S/R level).
-        # Computed causally per calendar day: an hourly candle on day D may only
-        # see day D-1's *final* VWAP, never a value derived from data at or after
-        # that candle. (Previously this took one scalar from near the end of the
-        # entire dataset and broadcast it onto every historical row.)
         day = df_1h.index.normalize()
         daily_last_vwap = df_1h.groupby(day)["vwap"].last()
         df_1h["vwap_yesterday"] = day.map(daily_last_vwap.shift(1))
@@ -94,11 +90,7 @@ class VWAPStrategy(Base):
         )
 
         if entry_signal:
-            # Fix the stop/target at entry time — only recompute them when a new
-            # trade is actually opened, not on every call (previously these were
-            # overwritten from the *current* candle's VWAP bands every bar,
-            # including while a trade was already open, so the "stop" drifted
-            # with the market instead of staying fixed from entry).
+            # Fix the stop/target at entry time — only recompute them when a new trade is actually opened
             self.dynamic_stop_loss = row["vwap_upper_1SD"]
             self.dynamic_take_profit = row["vwap_lower_2SD"]
 

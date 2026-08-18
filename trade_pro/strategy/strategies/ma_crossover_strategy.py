@@ -83,10 +83,7 @@ class MACrossoverStrategy(ATRStrategyBase):
         if self.position:
             return False
         if 0 <= index < 1:
-            # Not enough history yet at the very start of a backtest — guards
-            # against df.iloc[index - 1] wrapping around to the DataFrame's last
-            # row. Only applies to absolute (backtest) indices; live mode's
-            # negative relative index is unaffected.
+            # Not enough history yet at the very start of a backtest
             return False
 
         row = df.iloc[index]
