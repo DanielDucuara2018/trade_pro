@@ -8,12 +8,6 @@ This script shows how to:
 3. Compare results between both modes
 """
 
-import sys
-from pathlib import Path
-
-# Add the trade_pro package to Python path
-sys.path.insert(0, str(Path(__file__).parent))
-
 from trade_pro.strategy.strategies.multi_ema_strategy import MultiEmaStrategy
 
 

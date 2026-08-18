@@ -11,8 +11,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import colormaps
 
-from trade_pro.utils import check_env_vars
-
 if TYPE_CHECKING:
     from trade_pro.strategy.base import Trade
 
@@ -90,41 +88,36 @@ def get_data(symbol: str, timeframe: str) -> pd.DataFrame:
     return df.drop_duplicates()
 
 
-def check_env_vars_before_fetch() -> None:
-    """Log the status of every environment variable the codebase references,
-    before running a fetch.
+def _load_existing_data(symbol: str, timeframe: str, csv_path: Path) -> pd.DataFrame | None:
+    """Local data already on disk for symbol/timeframe, or None if there
+    isn't any (yet)."""
+    if not csv_path.exists():
+        return None
+    existing_df = get_data(symbol, timeframe)
+    return existing_df if not existing_df.empty else None
 
-    This fetches from Binance's public, unauthenticated OHLCV endpoint — it
-    needs no Binance API key/secret, and a scan of the codebase confirms no
-    such variable is referenced anywhere (`find_referenced_env_vars` finds
-    none containing "BINANCE"). It still checks and logs the vars the
-    codebase *does* use (currently the Telegram ones, needed for live
-    trading) so missing configuration is visible upfront rather than
-    discovered mid-run of some other command.
-    """
-    env_status = check_env_vars()
-    binance_vars = [name for name in env_status if "BINANCE" in name]
+
+def _resolve_fetch_start(
+    symbol: str, timeframe: str, existing_df: pd.DataFrame | None, requested_start: pd.Timestamp
+) -> pd.Timestamp:
+    """Where to actually start fetching from: requested_start, unless local
+    data already covers up to (or past) it, in which case only the gap since
+    the last local candle needs fetching."""
+    if existing_df is None:
+        return requested_start
+
+    last_existing = existing_df.index.max()
+    if requested_start >= last_existing:
+        return requested_start
+
     logger.info(
-        "Binance data fetch uses ccxt's public endpoint — no API key/secret required "
-        "(found %d Binance-related env var(s) referenced in the codebase: %s)",
-        len(binance_vars),
-        binance_vars or "none",
+        "Existing data for %s %s already goes up to %s — fetching only the gap since then "
+        "instead of re-fetching the whole range",
+        symbol,
+        timeframe,
+        last_existing,
     )
-
-    if not env_status:
-        return
-
-    missing = [name for name, is_set in env_status.items() if not is_set]
-    for name, is_set in env_status.items():
-        logger.info("Env var %s: %s", name, "OK" if is_set else "MISSING")
-
-    if missing:
-        logger.warning(
-            "Missing environment variable(s): %s. Not required to fetch data, but used "
-            "elsewhere in trade_pro (e.g. live-mode Telegram notifications) — set them "
-            "before running any command that needs them.",
-            ", ".join(missing),
-        )
+    return last_existing
 
 
 def fetch_data(
@@ -137,25 +130,11 @@ def fetch_data(
     entire range from start_date every time, which was wasteful and, worse,
     would have silently discarded any local history older than start_date.
     """
-    check_env_vars_before_fetch()
-
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = DATA_DIR.joinpath(f"{symbol.replace('/', '')}_{timeframe}.csv")
 
-    existing_df = None
-    if csv_path.exists():
-        existing_df = get_data(symbol, timeframe)
-        if not existing_df.empty:
-            last_existing = existing_df.index.max()
-            if start_date < last_existing:
-                logger.info(
-                    "Existing data for %s %s already goes up to %s — fetching only the gap "
-                    "since then instead of re-fetching the whole range",
-                    symbol,
-                    timeframe,
-                    last_existing,
-                )
-                start_date = last_existing
+    existing_df = _load_existing_data(symbol, timeframe, csv_path)
+    start_date = _resolve_fetch_start(symbol, timeframe, existing_df, start_date)
 
     ohlcv = []
     limit = 1000
@@ -177,7 +156,7 @@ def fetch_data(
     if df.index.duplicated().any():
         print(f"There are duplicated dates {df[df.index.duplicated()]}")
 
-    if existing_df is not None and not existing_df.empty:
+    if existing_df is not None:
         df = update_data(existing_df, df)
 
     logger.info("Writing %d candles for %s %s to %s", len(df), symbol, timeframe, csv_path)

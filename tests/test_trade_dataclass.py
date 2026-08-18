@@ -4,12 +4,8 @@ Simple test to verify the new Trade dataclass structure works correctly.
 """
 
 import sys
-from pathlib import Path
 
 import pandas as pd
-
-# Add the trade_pro package to Python path
-sys.path.insert(0, str(Path(__file__).parent))
 
 from trade_pro.strategy.base import Trade
 
