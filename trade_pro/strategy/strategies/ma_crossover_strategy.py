@@ -4,16 +4,15 @@ import pandas_ta as ta
 from trade_pro.strategy.strategies.atr_strategy_base import ATRStrategyBase
 
 
-class RSIStrategy(ATRStrategyBase):
+class MACrossoverStrategy(ATRStrategyBase):
     """
-    RSI-based trading strategy with trend filter.
+    Moving Average Crossover trading strategy.
 
     Entry Condition:
-        - RSI crosses above oversold level (default 30)
-        - Price above 200-period MA (optional trend filter)
+        - Fast MA crosses above Slow MA (bullish crossover)
 
     Exit Condition:
-        - RSI crosses below overbought level (default 70)
+        - Fast MA crosses below Slow MA (bearish crossover)
         OR
         - Stop loss / Take profit hit
 
@@ -22,11 +21,9 @@ class RSIStrategy(ATRStrategyBase):
         initial_balance (float): Starting account balance.
         timeframes (list[str]): List of timeframes to use.
         start_backtest_index (int): Index to start backtesting from.
-        rsi_period (int): RSI calculation period.
-        rsi_oversold (float): Oversold threshold for entry.
-        rsi_overbought (float): Overbought threshold for exit.
-        use_trend_filter (bool): Require price above MA for entry.
-        trend_ma_period (int): MA period for trend filter.
+        fast_period (int): Fast MA period.
+        slow_period (int): Slow MA period.
+        ma_type (str): Type of MA ('SMA' or 'EMA').
         atr_period (int): ATR period for stop loss calculation.
         atr_stop_multiplier (float): ATR multiplier for stop distance.
         risk_reward_ratio (float): Risk/reward ratio for take profit.
@@ -38,11 +35,9 @@ class RSIStrategy(ATRStrategyBase):
         initial_balance: float,
         timeframes: list[str],
         start_backtest_index: int,
-        rsi_period: int = 14,
-        rsi_oversold: float = 30,
-        rsi_overbought: float = 70,
-        use_trend_filter: bool = True,
-        trend_ma_period: int = 200,
+        fast_period: int = 10,
+        slow_period: int = 50,
+        ma_type: str = "EMA",
         atr_period: int = 14,
         atr_stop_multiplier: float = 2.0,
         risk_reward_ratio: float = 2.5,
@@ -51,11 +46,9 @@ class RSIStrategy(ATRStrategyBase):
         super().__init__(
             symbol, initial_balance, timeframes, start_backtest_index=start_backtest_index, **kwargs
         )
-        self.rsi_period = rsi_period
-        self.rsi_oversold = rsi_oversold
-        self.rsi_overbought = rsi_overbought
-        self.use_trend_filter = use_trend_filter
-        self.trend_ma_period = trend_ma_period
+        self.fast_period = fast_period
+        self.slow_period = slow_period
+        self.ma_type = ma_type.upper()
         self.atr_period = atr_period
         self.atr_stop_multiplier = atr_stop_multiplier
         self.risk_reward_ratio = risk_reward_ratio
@@ -63,20 +56,22 @@ class RSIStrategy(ATRStrategyBase):
     def check_config(self) -> bool:
         """Validate configuration parameters"""
         return (
-            0 < self.rsi_oversold < self.rsi_overbought < 100
-            and self.rsi_period > 0
-            and self.trend_ma_period > 0
+            self.fast_period < self.slow_period
+            and self.fast_period > 0
+            and self.ma_type in ["SMA", "EMA"]
         )
 
     def compute_indicators(self, data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-        """Calculate RSI, MA trend filter, and ATR"""
+        """Calculate fast and slow MAs, and ATR"""
         df = data[self.timeframes[0]]
 
-        # RSI
-        df["RSI"] = ta.rsi(df["close"], length=self.rsi_period)
-
-        # Trend filter MA
-        df["MA_trend"] = ta.sma(df["close"], length=self.trend_ma_period)
+        # Calculate MAs
+        if self.ma_type == "SMA":
+            df["MA_fast"] = ta.sma(df["close"], length=self.fast_period)
+            df["MA_slow"] = ta.sma(df["close"], length=self.slow_period)
+        else:  # EMA
+            df["MA_fast"] = ta.ema(df["close"], length=self.fast_period)
+            df["MA_slow"] = ta.ema(df["close"], length=self.slow_period)
 
         # ATR for stop loss
         df["ATR"] = ta.atr(df["high"], df["low"], df["close"], length=self.atr_period)
@@ -84,7 +79,7 @@ class RSIStrategy(ATRStrategyBase):
         return df
 
     def entry_condition(self, df: pd.DataFrame, *, index: int = -1) -> bool:
-        """Entry when RSI crosses above oversold"""
+        """Entry when fast MA crosses above slow MA"""
         if self.position:
             return False
         if 0 <= index < 1:
@@ -97,27 +92,23 @@ class RSIStrategy(ATRStrategyBase):
         row = df.iloc[index]
         prev = df.iloc[index - 1]
 
-        # RSI crosses above oversold
-        rsi_signal = prev["RSI"] <= self.rsi_oversold and row["RSI"] > self.rsi_oversold
-
-        # Trend filter: price above MA
-        trend_ok = not self.use_trend_filter or row["close"] > row["MA_trend"]
-
-        return rsi_signal and trend_ok
+        # Golden cross: fast MA crosses above slow MA
+        return prev["MA_fast"] <= prev["MA_slow"] and row["MA_fast"] > row["MA_slow"]
 
     def exit_condition(self, df: pd.DataFrame, *, index: int = -1) -> bool:
-        """Exit when RSI crosses below overbought"""
+        """Exit when fast MA crosses below slow MA"""
         if not self.position:
             return False
 
         row = df.iloc[index]
         prev = df.iloc[index - 1]
 
-        # RSI crosses below overbought
-        return prev["RSI"] >= self.rsi_overbought and row["RSI"] < self.rsi_overbought
+        # Death cross: fast MA crosses below slow MA
+        return prev["MA_fast"] >= prev["MA_slow"] and row["MA_fast"] < row["MA_slow"]
 
     def _get_trade_metadata(self, row: pd.Series, atr_value: float, entry_price: float) -> dict:
-        """Add RSI-specific metadata"""
+        """Add MA-specific metadata"""
         metadata = super()._get_trade_metadata(row, atr_value, entry_price)
-        metadata["rsi"] = row["RSI"]
+        metadata["ma_fast"] = row["MA_fast"]
+        metadata["ma_slow"] = row["MA_slow"]
         return metadata

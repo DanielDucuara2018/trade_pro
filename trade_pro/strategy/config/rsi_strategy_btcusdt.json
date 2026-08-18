@@ -7,18 +7,20 @@
         "rsi_period": 6,
         "rsi_oversold": 15,
         "rsi_overbought": 87,
-        "ema_period": 113,
-        "adx_period": 16,
-        "adx_treshold": 28
+        "use_trend_filter": true,
+        "trend_ma_period": 113,
+        "atr_period": 16,
+        "atr_stop_multiplier": 2.0,
+        "risk_reward_ratio": 2.5
     },
     "optimization": {
         "variables": {
             "rsi_period": { "low": 5, "high": 30 },
             "rsi_oversold": { "low": 0, "high": 30 },
             "rsi_overbought": { "low": 70, "high": 100 },
-            "ema_period": { "low": 20, "high": 200 },
-            "adx_period": { "low": 7, "high": 30 },
-            "adx_treshold": { "low": 10, "high": 40 }
+            "trend_ma_period": { "low": 20, "high": 200 },
+            "atr_period": { "low": 7, "high": 30 },
+            "atr_stop_multiplier": { "low": 1.0, "high": 4.0 }
         },
         "score_method": "balance_consistency",
         "n_trials": 1000
